@@ -56,6 +56,8 @@ export function sanitizeView(view, fallback) {
   const v = { ...fallback, ...view };
   for (const k of Object.keys(fallback))
     if (!Number.isFinite(v[k])) v[k] = fallback[k];
+  // Clamp the viewport domain while preserving its span when panning reaches the floor.
+  if (v.minRating < 100) { v.maxRating += 100 - v.minRating; v.minRating = 100; }
   v.minFriends = Math.max(0, v.minFriends);
   v.maxFriends = Math.max(v.minFriends + 1, v.maxFriends);
   v.maxRating = Math.max(v.minRating + 1, v.maxRating);

@@ -113,13 +113,8 @@ function fromUrl() {
     if (allowed.includes(q.get(key))) s[key] = q.get(key);
   for (const key of ["minRating", "maxRating", "minFriends", "maxFriends"]) {
     const raw = q.get(key);
-    if (
-      raw !== null &&
-      raw.trim() !== "" &&
-      Number.isFinite(Number(raw)) &&
-      Number(raw) >= 0
-    )
-      s[key] = Number(raw);
+    if (raw !== null && raw.trim() !== "" && Number.isFinite(Number(raw)))
+      s[key] = Math.max(key.endsWith("Rating") ? 100 : 0, Number(raw));
   }
   state = s;
   return q.get("player");
@@ -196,7 +191,10 @@ function drawTable() {
     fragment.append(tr);
   }
   $("player-rows")?.replaceChildren(fragment);
-  text("result-count", `${number(filtered.length)} players`);
+  text(
+    "result-count",
+    `${number(filtered.length)} ${filtered.length === 1 ? "player" : "players"}`,
+  );
   text("page-status", pages ? `Page ${page + 1} of ${pages}` : "No results");
   if ($("previous")) $("previous").disabled = page === 0;
   if ($("next")) $("next").disabled = page >= pages - 1;
@@ -410,8 +408,8 @@ function bind() {
     $(id)?.addEventListener("input", () => {
       const raw = $(id).value;
       state[key] =
-        raw.trim() !== "" && Number.isFinite(Number(raw)) && Number(raw) >= 0
-          ? Number(raw)
+        raw.trim() !== "" && Number.isFinite(Number(raw))
+          ? Math.max(key.endsWith("Rating") ? 100 : 0, Number(raw))
           : null;
       page = 0;
       chartView = null;
@@ -529,10 +527,7 @@ async function load() {
     );
     text(
       "rating-total",
-      number(
-        data.coverage?.ratings?.overall ??
-          accounts.filter((a) => ratingValue(a, "overall") != null).length,
-      ),
+      number(accounts.filter((a) => ratingValue(a, "overall") != null).length),
     );
     text("data-date", date(data.generatedAt));
     const directory = data.coverage?.directory || {},

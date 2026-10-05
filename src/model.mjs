@@ -34,7 +34,7 @@ export const RATING_LABELS = Object.freeze({
 const controls = ["bullet", "blitz", "rapid"];
 const validCount = (value) => Number.isSafeInteger(value) && value >= 0;
 const validRating = (value) =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
+  typeof value === "number" && Number.isFinite(value) && value >= 100;
 
 export function normalizeCount(count) {
   if (
@@ -105,8 +105,12 @@ export function filterPlayers(accounts, state = {}) {
     .toLowerCase();
   const titles = new Set(Array.isArray(state.titles) ? state.titles : []);
   const axis = state.axis ?? "overall";
-  const minRating = bound(state.minRating),
-    maxRating = bound(state.maxRating);
+  const ratingBound = (value) => {
+    const parsed = bound(value);
+    return parsed === null ? null : Math.max(100, parsed);
+  };
+  const minRating = ratingBound(state.minRating),
+    maxRating = ratingBound(state.maxRating);
   const minFriends = bound(state.minFriends),
     maxFriends = bound(state.maxFriends);
   return accounts.filter((account) => {
@@ -206,9 +210,9 @@ export function fitRatingRange(values) {
       min = Math.min(min, value);
       max = Math.max(max, value);
     }
-  if (min === Infinity) return [0, 3000];
+  if (min === Infinity) return [100, 3000];
   const padding = max === min ? Math.max(25, max * 0.025) : (max - min) * 0.04;
-  return [Math.max(0, min - padding), max + padding];
+  return [Math.max(100, min - padding), max + padding];
 }
 
 function csvCell(value) {
