@@ -15,6 +15,8 @@ Explore Chess.com’s titled players by rating and public friend count. Built in
 
 The site displays dated public observations. Collection is incomplete: missing counts and ratings stay unknown, and a `999+` display is a lower bound. An overall rating appears only when all three time controls are available; it is a descriptive average, not an official Chess.com rating. Friend counts do not identify who sent a friend request or measure activity.
 
+Titles follow Chess.com’s displayed badges, including its Master (M) badge.
+
 ## Run
 
 ```sh
@@ -47,6 +49,12 @@ npm run deploy
 
 Authenticate with the intended Cloudflare account before deployment. No credentials are committed to this repository.
 
-The current site was published with Cloudflare’s dashboard using **Upload your static files**. You can upload a ZIP containing the contents of `dist/` to the existing `chess-friend-graph` Worker without granting Wrangler additional account access.
+The current site was published with Cloudflare’s dashboard using **Upload your static files**. To prepare an update:
+
+```sh
+npm run package
+```
+
+Upload `verification/cloudflare-site.zip` through **New deployment** on the existing `chess-friend-graph` Worker. The command builds and packages exactly the eleven public assets, checks their sizes, and verifies their bytes after unpacking. It refuses unexpected files and symlinks. The ZIP is reproducible and stays out of Git. Dashboard uploads do not require granting Wrangler additional account access.
 
 Part of [tetizz chess lab](https://tetizz.github.io/Home/).

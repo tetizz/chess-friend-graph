@@ -36,6 +36,7 @@ let state = defaults(),
   filtered = [],
   comparing = new Set();
 const PAGE_SIZE = 50;
+const editingRatingFields = new Set();
 const number = (value) =>
   value == null
     ? "Unknown"
@@ -92,6 +93,7 @@ function find(username) {
   );
 }
 function fromUrl() {
+  editingRatingFields.clear();
   const q = new URLSearchParams(location.search),
     s = defaults();
   s.search = q.get("search") || "";
@@ -141,7 +143,12 @@ function syncInputs() {
     if ($(key)) $(key).value = state[key];
   for (const key of ["minRating", "maxRating", "minFriends", "maxFriends"]) {
     const id = key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
-    if ($(id)) $(id).value = state[key] ?? "";
+    const input = $(id);
+    if (
+      input &&
+      !(editingRatingFields.has(key) && document.activeElement === input)
+    )
+      input.value = state[key] ?? "";
   }
   for (const b of $("title-filters")?.querySelectorAll("button") || []) {
     const active = state.titles.includes(b.dataset.title);
@@ -406,6 +413,7 @@ function bind() {
   for (const key of ["minRating", "maxRating", "minFriends", "maxFriends"]) {
     const id = key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
     $(id)?.addEventListener("input", () => {
+      if (key.endsWith("Rating")) editingRatingFields.add(key);
       const raw = $(id).value;
       state[key] =
         raw.trim() !== "" && Number.isFinite(Number(raw))
@@ -415,8 +423,17 @@ function bind() {
       chartView = null;
       render();
     });
+    if (key.endsWith("Rating")) {
+      const finishEditing = () => {
+        editingRatingFields.delete(key);
+        if ($(id)) $(id).value = state[key] ?? "";
+      };
+      $(id)?.addEventListener("change", finishEditing);
+      $(id)?.addEventListener("blur", finishEditing);
+    }
   }
   $("reset-filters")?.addEventListener("click", () => {
+    editingRatingFields.clear();
     state = defaults();
     page = 0;
     chartView = null;

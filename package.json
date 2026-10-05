@@ -6,6 +6,7 @@
   "description": "Explore Chess.com titled players, public friend counts, and ratings.",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package": "npm run build && node scripts/package-site.mjs",
     "test": "node --test test/*.test.mjs",
     "dev": "wrangler dev",
     "deploy": "npm run build && wrangler deploy"
@@ -14,6 +15,7 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "fflate": "0.8.3",
     "prettier": "3.9.9",
     "wrangler": "4.147.0"
   }
