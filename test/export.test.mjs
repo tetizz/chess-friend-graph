@@ -14,8 +14,8 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { exportPublicData } from "../scripts/export-public-data.mjs";
 const hash = (x) => createHash("sha256").update(x).digest("hex");
-const original = resolve(
-  fileURLToPath(new URL("../../chess-friend-graph/", import.meta.url)),
+const collectorFixtures = resolve(
+  fileURLToPath(new URL("./fixtures/collector/", import.meta.url)),
 );
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "chess-public-export-"));
@@ -25,7 +25,7 @@ async function fixture(t) {
     published = join(source, "main-publications", generation);
   await mkdir(published, { recursive: true });
   for (const name of ["model.mjs", "rating-model.mjs"])
-    await copyFile(join(original, name), join(source, name));
+    await copyFile(join(collectorFixtures, name), join(source, name));
   const at = "2026-10-04T12:00:00.000Z";
   const field = (value) => ({
     value,
