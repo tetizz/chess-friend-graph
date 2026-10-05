@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { lstat, readdir, readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash, randomUUID } from "node:crypto";
 import { zipSync, unzipSync } from "fflate";
 
 export const SITE_ASSETS = Object.freeze([
@@ -70,16 +71,50 @@ export async function createSiteZip(directory) {
   return archive;
 }
 
-export async function packageSite() {
-  const archive = await createSiteZip(join(root, "dist"));
-  const directory = join(root, "verification");
+export async function packageSite({
+  sourceDirectory = join(root, "dist"),
+  outputDirectory = join(root, "verification"),
+} = {}) {
+  const archive = await createSiteZip(sourceDirectory);
+  const directory = resolve(outputDirectory);
   await mkdir(directory, { recursive: true });
   const info = await lstat(directory);
   if (!info.isDirectory() || info.isSymbolicLink())
     throw Error("Invalid package output directory.");
-  const output = join(directory, "cloudflare-site.zip");
-  await writeFile(output, archive);
-  return { output, bytes: archive.length, assets: SITE_ASSETS.length };
+  const suffix = `${Date.now()}-${randomUUID()}`;
+  const output = join(directory, `cloudflare-site-${suffix}.zip`);
+  const receipt = join(directory, `cloudflare-site-${suffix}.json`);
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const sha256 = digest(archive);
+  const files = unzipSync(archive);
+  await writeFile(output, archive, { flag: "wx" });
+  assert.deepEqual(new Uint8Array(await readFile(output)), archive);
+  await writeFile(
+    receipt,
+    JSON.stringify(
+      {
+        createdAt: new Date().toISOString(),
+        output,
+        bytes: archive.length,
+        sha256,
+        files: SITE_ASSETS.map((path) => ({
+          path,
+          bytes: files[path].length,
+          sha256: digest(files[path]),
+        })),
+      },
+      null,
+      2,
+    ) + "\n",
+    { flag: "wx" },
+  );
+  return {
+    output,
+    bytes: archive.length,
+    assets: SITE_ASSETS.length,
+    sha256,
+    receipt,
+  };
 }
 
 if (

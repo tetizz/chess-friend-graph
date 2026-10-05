@@ -55,6 +55,6 @@ The current site was published with Cloudflare’s dashboard using **Upload your
 npm run package
 ```
 
-Upload `verification/cloudflare-site.zip` through **New deployment** on the existing `chess-friend-graph` Worker. The command builds and packages exactly the eleven public assets, checks their sizes, and verifies their bytes after unpacking. It refuses unexpected files and symlinks. The ZIP is reproducible and stays out of Git. Dashboard uploads do not require granting Wrangler additional account access.
+Upload the ZIP at the printed `output` path through **New deployment** on the existing `chess-friend-graph` Worker. Each run creates a new archive and JSON receipt in `verification/`, preserving earlier packages. The receipt records SHA-256 hashes for the archive and every included file. The command builds and packages exactly the eleven public assets, checks their sizes, and verifies their bytes after unpacking. It refuses unexpected files and symlinks. Identical inputs produce identical ZIP bytes; archive names and receipts are unique. Both stay out of Git. Dashboard uploads do not require granting Wrangler additional account access.
 
 Part of [tetizz chess lab](https://tetizz.github.io/Home/).
