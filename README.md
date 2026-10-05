@@ -13,7 +13,7 @@ Explore Chess.com’s titled players by rating and public friend count. Built in
 - Share a filtered view, download CSV data, or save the graph as an image.
 - Light and dark themes, keyboard shortcuts, and reduced-motion support.
 
-The site displays dated public observations. Collection is incomplete: missing counts and ratings stay unknown, and a `999+` display is a lower bound. An overall rating appears only when all three time controls are available; it is a descriptive average, not an official Chess.com rating. Friend counts do not identify who sent a friend request or measure activity.
+The site displays dated public observations. Complete saved directory page coverage means every recorded page position was captured; it does not establish a live or simultaneous census. Card observations can repeat across captures, so distinct directory accounts are separate from the broader dated roster union. Friend-count and rating coverage remain separate: missing values stay unknown, and a `999+` display is a lower bound. An overall rating appears only when all three time controls are available; it is a descriptive average, not an official Chess.com rating. Friend counts do not identify who sent a friend request or measure activity.
 
 Titles follow Chess.com’s displayed badges, including its Master (M) badge.
 

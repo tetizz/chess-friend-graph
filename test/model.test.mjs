@@ -11,6 +11,7 @@ import {
   summarize,
   fitRatingRange,
   makeCsv,
+  formatSavedCoverage,
 } from "../src/model.mjs";
 const exact = (value) => ({ value, precision: "exact" });
 const player = (username, count, ratings = [1000, 1100, 1200], extra = {}) => ({
@@ -269,4 +270,78 @@ test("CSV escapes quotes, commas, newlines and spreadsheet formulas", () => {
   assert(csv.includes('"\'+GM"'));
   assert(csv.includes('"\' @SUM(1,2)\n""quoted"""'));
   assert(csv.includes('"\'\t=evil"'));
+});
+
+test("full saved pages separate repeated observations, roster and unknown counts", () => {
+  const r = formatSavedCoverage({
+    accounts: 17133,
+    counts: { exact: 7744, lower_bound: 100, unknown: 9289 },
+    directory: {
+      pagesCaptured: 686,
+      pagesExpected: 686,
+      pageCoverageComplete: true,
+      snapshotVerified: false,
+      observedEntries: 17137,
+      uniqueAccounts: 13500,
+      duplicateEntries: 3637,
+    },
+  });
+  assert.equal(r.pageComplete, true);
+  assert.equal(r.known, 7844);
+  assert.match(r.detail, /13,500 distinct directory accounts/);
+  assert.match(r.detail, /3,637 repeat entries/);
+  assert.match(r.text, /9,289 unknown/);
+  assert.match(r.detail, /17,133 accounts in the broader dated roster union/);
+  assert.match(r.detail, /not a live or simultaneous census/);
+  assert.ok(r.percent < 100);
+});
+test("older partial metadata leaves optional metrics and absent counts unavailable", () => {
+  const r = formatSavedCoverage({
+    accounts: 17126,
+    directory: { pagesCaptured: 414, pagesExpected: 686, complete: false },
+  });
+  assert.equal(r.pageComplete, false);
+  assert.equal(r.known, null);
+  assert.equal(r.percent, null);
+  assert.match(r.text, /414 of 686/);
+  assert.doesNotMatch(r.detail, /card observations|repeat entries|Captured /);
+});
+test("inconsistent metrics and reversed capture times do not appear", () => {
+  const r = formatSavedCoverage({
+    accounts: 10,
+    counts: { exact: 4, lower_bound: 1, unknown: 6 },
+    directory: {
+      pagesCaptured: 686,
+      pagesExpected: 686,
+      pageCoverageComplete: false,
+      observedEntries: 20,
+      uniqueAccounts: 30,
+      duplicateEntries: 2,
+      captureStartedAt: "2026-10-05T01:00:00Z",
+      captureEndedAt: "2026-10-04T01:00:00Z",
+    },
+  });
+  assert.equal(r.known, null);
+  assert.equal(r.pageComplete, false);
+  assert.doesNotMatch(r.detail, /card observations|Captured /);
+});
+test("capture period uses readable UTC dates without mutating exported ISO values", () => {
+  const directory = {
+    captureStartedAt: "2026-10-03T23:59:00Z",
+    captureEndedAt: "2026-10-05T01:00:00Z",
+  };
+  const before = { ...directory };
+  const result = formatSavedCoverage({ directory });
+  assert.match(
+    result.detail,
+    /Captured Oct 3, 2026 to Oct 5, 2026 \(UTC dates\)/,
+  );
+  assert.doesNotMatch(result.text, /Captured/);
+  assert.deepEqual(directory, before);
+  assert.doesNotMatch(
+    formatSavedCoverage({
+      directory: { captureStartedAt: directory.captureStartedAt },
+    }).detail,
+    /Captured/,
+  );
 });

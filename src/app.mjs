@@ -9,6 +9,7 @@ import {
   sortPlayers,
   summarize,
   makeCsv,
+  formatSavedCoverage,
 } from "./model.mjs";
 import { mountChart } from "./chart.mjs";
 
@@ -573,32 +574,30 @@ async function load() {
       throw Error("Unsupported dataset");
     dataset = data;
     accounts = data.accounts;
+    const savedCounts = summarize(accounts);
+    const coverage = formatSavedCoverage({
+      ...data.coverage,
+      accounts: accounts.length,
+      counts: {
+        exact: savedCounts.exact,
+        lower_bound: savedCounts.lowerBound,
+        unknown: savedCounts.unknown,
+      },
+    });
     text("roster-total", number(accounts.length));
-    text(
-      "count-total",
-      number(
-        (data.coverage?.counts?.exact || 0) +
-          (data.coverage?.counts?.lower_bound || 0),
-      ),
-    );
+    text("count-total", number(coverage.known));
     text(
       "rating-total",
       number(accounts.filter((a) => ratingValue(a, "overall") != null).length),
     );
     text("data-date", date(data.generatedAt));
-    const directory = data.coverage?.directory || {},
-      known =
-        (data.coverage?.counts?.exact || 0) +
-        (data.coverage?.counts?.lower_bound || 0);
-    text("coverage-status", "Saved coverage · collection remains partial");
-    text(
-      "coverage-text",
-      `${number(known)} observed friend counts · ${number(data.coverage?.counts?.unknown || 0)} unknown · directory ${number(directory.pagesCaptured)} of ${number(directory.pagesExpected)} pages. Dated roster union, not a live census.`,
-    );
+    text("coverage-status", coverage.status);
+    text("coverage-text", coverage.text);
+    text("directory-coverage-detail", coverage.detail);
+    if ($("directory-coverage-detail"))
+      $("directory-coverage-detail").hidden = !coverage.detail;
     if ($("coverage-bar")) {
-      const percent = accounts.length
-        ? Math.min(100, (known / accounts.length) * 100)
-        : 0;
+      const percent = coverage.percent ?? 0;
       $("coverage-bar").style.width = `${percent}%`;
       $("coverage-bar").setAttribute(
         "aria-label",

@@ -70,6 +70,75 @@ function publicMeasurement(input, { display = false, source = false } = {}) {
 }
 
 // Canonical helpers validate measurements; an explicit new object limits public fields.
+function directoryDate(value) {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,7}))?Z$/.exec(
+    value,
+  );
+  if (!match || !Number.isFinite(Date.parse(value))) return null;
+  const canonical = `${match[1]}.${(match[2] ?? "").padEnd(3, "0").slice(0, 3)}Z`;
+  return new Date(value).toISOString() === canonical ? value : null;
+}
+
+function publicDirectory(c) {
+  let pagesCaptured = integer(c.pagesCaptured),
+    pagesExpected = integer(c.expectedPages),
+    observedEntries = integer(c.observedEntries),
+    uniqueAccounts = integer(c.uniqueAccounts);
+  if (
+    pagesCaptured !== null &&
+    pagesExpected !== null &&
+    pagesCaptured > pagesExpected
+  )
+    pagesCaptured = pagesExpected = null;
+  const inconsistentEntries =
+    observedEntries !== null &&
+    uniqueAccounts !== null &&
+    uniqueAccounts > observedEntries;
+  if (inconsistentEntries) observedEntries = uniqueAccounts = null;
+  const derivedDuplicates =
+    observedEntries !== null && uniqueAccounts !== null
+      ? observedEntries - uniqueAccounts
+      : null;
+  let duplicateEntries = Object.hasOwn(c, "duplicateEntries")
+    ? integer(c.duplicateEntries)
+    : derivedDuplicates;
+  if (inconsistentEntries) duplicateEntries = null;
+  if (
+    duplicateEntries !== null &&
+    derivedDuplicates !== null &&
+    duplicateEntries !== derivedDuplicates
+  )
+    duplicateEntries = null;
+  let captureStartedAt = directoryDate(c.captureStartedAt),
+    captureEndedAt = directoryDate(c.captureEndedAt);
+  if (
+    captureStartedAt &&
+    captureEndedAt &&
+    Date.parse(captureStartedAt) > Date.parse(captureEndedAt)
+  )
+    captureStartedAt = captureEndedAt = null;
+  return {
+    pagesCaptured,
+    pagesExpected,
+    complete: c.directoryComplete === true,
+    observedEntries,
+    uniqueAccounts,
+    duplicateEntries,
+    pageCoverageComplete:
+      pagesExpected !== null &&
+      pagesExpected > 0 &&
+      pagesCaptured === pagesExpected &&
+      Array.isArray(c.missingPages) &&
+      c.missingPages.length === 0 &&
+      Array.isArray(c.wrongSizedPages) &&
+      c.wrongSizedPages.length === 0,
+    captureStartedAt,
+    captureEndedAt,
+    snapshotVerified: false,
+  };
+}
+
 export function projectPublicIndex(index, publication, helpers) {
   if (!Array.isArray(index.accounts) || !date(index.generatedAt))
     throw Error("Invalid published compact index.");
@@ -148,11 +217,7 @@ export function projectPublicIndex(index, publication, helpers) {
       accounts: accounts.length,
       counts,
       ratings,
-      directory: {
-        pagesCaptured: integer(c.pagesCaptured),
-        pagesExpected: integer(c.expectedPages),
-        complete: c.directoryComplete === true,
-      },
+      directory: publicDirectory(c),
       roster: {
         snapshotCoverageComplete: roster.snapshotCoverageComplete === true,
         publishedUnionAccounts: integer(roster.summary?.publishedUnionAccounts),

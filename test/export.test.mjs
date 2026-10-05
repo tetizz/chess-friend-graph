@@ -186,3 +186,142 @@ test("bad pointer and duplicate identities fail; incomplete controls keep overal
   assert.equal(data.accounts[0].ratings.overall.value, null);
   assert.equal(data.accounts[0].ratings.overall.precision, "unknown");
 });
+
+test("all historical page positions can be covered without a unique census or atomic snapshot", async (t) => {
+  const f = await fixture(t);
+  f.index.coverage = {
+    pagesCaptured: 686,
+    expectedPages: 686,
+    observedEntries: 17137,
+    uniqueAccounts: 13500,
+    missingPages: [],
+    wrongSizedPages: [],
+    directoryComplete: false,
+    snapshotVerified: true,
+    captureStartedAt: "2026-10-04T16:42:14.435Z",
+    captureEndedAt: "2026-10-05T03:20:00.1234567Z",
+    privateEvidence: "DO_NOT_PUBLISH",
+  };
+  await f.install();
+  await exportPublicData(f);
+  const text = await readFile(f.output, "utf8"),
+    directory = JSON.parse(text).coverage.directory;
+  assert.equal(directory.pageCoverageComplete, true);
+  assert.equal(directory.complete, false);
+  assert.equal(directory.snapshotVerified, false);
+  assert.equal(directory.observedEntries, 17137);
+  assert.equal(directory.uniqueAccounts, 13500);
+  assert.equal(directory.duplicateEntries, 3637);
+  assert.equal(directory.captureStartedAt, f.index.coverage.captureStartedAt);
+  assert.equal(directory.captureEndedAt, f.index.coverage.captureEndedAt);
+  assert(!text.includes("DO_NOT_PUBLISH"));
+});
+
+test("absent or inconsistent directory measurements stay unknown and refuse full page coverage", async (t) => {
+  const f = await fixture(t);
+  for (const coverage of [
+    {},
+    { pagesCaptured: 686, expectedPages: 686, missingPages: [] },
+    {
+      pagesCaptured: 687,
+      expectedPages: 686,
+      missingPages: [],
+      wrongSizedPages: [],
+      observedEntries: 10,
+      uniqueAccounts: 11,
+      duplicateEntries: 1,
+    },
+    {
+      pagesCaptured: 686,
+      expectedPages: 686,
+      missingPages: [270],
+      wrongSizedPages: [],
+      observedEntries: "17137",
+      uniqueAccounts: null,
+    },
+    {
+      pagesCaptured: 686,
+      expectedPages: 686,
+      missingPages: [],
+      wrongSizedPages: [270],
+      observedEntries: 17137,
+      uniqueAccounts: 13500,
+      duplicateEntries: 1,
+    },
+  ]) {
+    f.index.coverage = coverage;
+    await f.install();
+    await exportPublicData(f);
+    const directory = JSON.parse(await readFile(f.output)).coverage.directory;
+    assert.equal(directory.pageCoverageComplete, false);
+    assert.equal(directory.snapshotVerified, false);
+    assert.equal(directory.duplicateEntries, null);
+  }
+  f.index.coverage = {
+    observedEntries: 17137,
+    uniqueAccounts: 13500,
+    duplicateEntries: 3637,
+    captureStartedAt: "2026-02-30T00:00:00Z",
+    captureEndedAt: "not a date",
+  };
+  await f.install();
+  await exportPublicData(f);
+  let directory = JSON.parse(await readFile(f.output)).coverage.directory;
+  assert.equal(directory.duplicateEntries, 3637);
+  assert.equal(directory.captureStartedAt, null);
+  assert.equal(directory.captureEndedAt, null);
+  f.index.coverage = {
+    captureStartedAt: "2026-10-05T00:00:00Z",
+    captureEndedAt: "2026-10-04T00:00:00Z",
+  };
+  await f.install();
+  await exportPublicData(f);
+  directory = JSON.parse(await readFile(f.output)).coverage.directory;
+  assert.equal(directory.captureStartedAt, null);
+  assert.equal(directory.captureEndedAt, null);
+});
+
+test("source-backed M accounts survive the public projection with unknown counts and no private fields", async (t) => {
+  const f = await fixture(t);
+  const usernames = [
+    "TitledVerification",
+    "xenibiw413tatefarmcom",
+    "degayi6683sixopluscom",
+    "Coach",
+  ];
+  f.index.accounts = usernames.map((username) => ({
+    username,
+    title: "M",
+    friendCount: {
+      value: null,
+      precision: "unknown",
+      display: "Unknown",
+      uuid: "DO_NOT_PUBLISH",
+    },
+    isYourFriend: true,
+    friendList: ["DO_NOT_PUBLISH"],
+    comparison: { secret: "DO_NOT_PUBLISH" },
+  }));
+  await f.install();
+  await exportPublicData(f);
+  const text = await readFile(f.output, "utf8"),
+    data = JSON.parse(text);
+  assert.deepEqual(
+    data.accounts.map((a) => a.username),
+    usernames,
+  );
+  assert(
+    data.accounts.every(
+      (a) =>
+        a.title === "M" &&
+        a.friendCount.value === null &&
+        a.friendCount.precision === "unknown",
+    ),
+  );
+  assert.equal(data.coverage.counts.unknown, 4);
+  assert(
+    !text.includes("DO_NOT_PUBLISH") &&
+      !text.includes("isYourFriend") &&
+      !text.includes("friendList"),
+  );
+});

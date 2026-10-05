@@ -31,6 +31,88 @@ export const RATING_LABELS = Object.freeze({
   blitz: "Blitz",
   rapid: "Rapid",
 });
+/** Keep page positions, repeated card observations, and count coverage separate. */
+export function formatSavedCoverage(coverage = {}) {
+  const integer = (value) => Number.isSafeInteger(value) && value >= 0;
+  const format = (value) => value.toLocaleString("en-US");
+  const total = integer(coverage.accounts) ? coverage.accounts : null;
+  const counts = coverage.counts || {};
+  const countsValid =
+    total !== null &&
+    [counts.exact, counts.lower_bound, counts.unknown].every(integer) &&
+    counts.exact + counts.lower_bound + counts.unknown === total;
+  const known = countsValid ? counts.exact + counts.lower_bound : null;
+  const directory = coverage.directory || {};
+  const pagesValid =
+    integer(directory.pagesCaptured) &&
+    integer(directory.pagesExpected) &&
+    directory.pagesExpected > 0 &&
+    directory.pagesCaptured <= directory.pagesExpected;
+  const pageComplete =
+    pagesValid &&
+    directory.pagesCaptured === directory.pagesExpected &&
+    (directory.pageCoverageComplete === true ||
+      (directory.pageCoverageComplete === undefined &&
+        directory.complete === true));
+  const parts = [
+    countsValid
+      ? `${format(known)} observed friend counts · ${format(counts.unknown)} unknown`
+      : "Friend-count coverage unavailable",
+  ];
+  if (pagesValid)
+    parts.push(
+      `${format(directory.pagesCaptured)} of ${format(directory.pagesExpected)} saved directory page positions${pageComplete ? " · page coverage complete" : ""}`,
+    );
+  const metricsValid =
+    [
+      directory.observedEntries,
+      directory.uniqueAccounts,
+      directory.duplicateEntries,
+    ].every(integer) &&
+    directory.observedEntries ===
+      directory.uniqueAccounts + directory.duplicateEntries &&
+    (total === null || directory.uniqueAccounts <= total);
+  const details = [];
+  if (metricsValid)
+    details.push(
+      `${format(directory.observedEntries)} card observations · ${format(directory.uniqueAccounts)} distinct directory accounts · ${format(directory.duplicateEntries)} repeat entries across captures`,
+    );
+  const start = Date.parse(directory.captureStartedAt),
+    end = Date.parse(directory.captureEndedAt);
+  if (
+    typeof directory.captureStartedAt === "string" &&
+    typeof directory.captureEndedAt === "string" &&
+    Number.isFinite(start) &&
+    Number.isFinite(end) &&
+    start <= end
+  ) {
+    const displayDate = new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    details.push(
+      `Captured ${displayDate.format(start)} to ${displayDate.format(end)} (UTC dates)`,
+    );
+  }
+  if (total !== null)
+    details.push(`${format(total)} accounts in the broader dated roster union`);
+  details.push(
+    "Saved page coverage is not a live or simultaneous census, and does not mean every friend count is known.",
+  );
+  return {
+    status: pageComplete
+      ? "Complete saved directory page coverage · dated observations"
+      : "Saved directory observations · dated coverage",
+    text: parts.join(". "),
+    detail: details.join(". "),
+    known,
+    total,
+    percent: countsValid && total > 0 ? (known / total) * 100 : null,
+    pageComplete,
+  };
+}
 const controls = ["bullet", "blitz", "rapid"];
 const validCount = (value) => Number.isSafeInteger(value) && value >= 0;
 const validRating = (value) =>
