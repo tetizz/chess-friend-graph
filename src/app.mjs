@@ -157,6 +157,8 @@ function syncInputs() {
   }
 }
 function drawTable() {
+  const openerUsername = detailOpener?.dataset?.username;
+  const openerAction = detailOpener?.dataset?.action;
   const pages = Math.ceil(filtered.length / PAGE_SIZE);
   page = Math.max(0, Math.min(page, Math.max(0, pages - 1)));
   const fragment = document.createDocumentFragment();
@@ -198,6 +200,11 @@ function drawTable() {
     fragment.append(tr);
   }
   $("player-rows")?.replaceChildren(fragment);
+  if (detailOpener && !detailOpener.isConnected && openerUsername) {
+    detailOpener =
+      matchingControl("player-rows", openerUsername, openerAction) ||
+      $("search");
+  }
   text(
     "result-count",
     `${number(filtered.length)} ${filtered.length === 1 ? "player" : "players"}`,
@@ -344,7 +351,41 @@ function renderCompare() {
   }
   if ($("compare-panel")) $("compare-panel").hidden = comparing.size === 0;
 }
-function toggleCompare(a) {
+function matchingControl(scope, username, kind = "compare") {
+  return [
+    ...($(scope)?.querySelectorAll("[data-action][data-username]") || []),
+  ].find((b) => b.dataset.action === kind && b.dataset.username === username);
+}
+function visibleControl(control) {
+  return (
+    control?.isConnected &&
+    !control.disabled &&
+    !control.closest("[hidden]") &&
+    control.getClientRects().length > 0
+  );
+}
+function refreshComparison({ control = null, username = null } = {}) {
+  const restore = control && document.activeElement === control;
+  const scope = control?.closest("#player-detail")
+    ? "player-detail"
+    : control?.closest("#compare-panel")
+      ? "compare-cards"
+      : "player-rows";
+  renderCompare();
+  drawTable();
+  if (selected) openDetail(selected);
+  if (restore) {
+    const candidates = [
+      matchingControl(scope, username),
+      $("clear-compare"),
+      matchingControl("player-detail", username),
+      matchingControl("player-rows", username),
+      $("search"),
+    ];
+    candidates.find(visibleControl)?.focus({ preventScroll: true });
+  }
+}
+function toggleCompare(a, control = null) {
   if (!a) return;
   if (comparing.has(a.username)) comparing.delete(a.username);
   else {
@@ -354,9 +395,7 @@ function toggleCompare(a) {
     }
     comparing.add(a.username);
   }
-  renderCompare();
-  drawTable();
-  if (selected) openDetail(selected);
+  refreshComparison({ control, username: a.username });
   announce(`${comparing.size} players selected for comparison`);
 }
 function download(value, name, type) {
@@ -457,9 +496,9 @@ function bind() {
     drawTable();
   });
   $("clear-compare")?.addEventListener("click", () => {
+    const username = selected?.username || comparing.values().next().value;
     comparing.clear();
-    renderCompare();
-    drawTable();
+    refreshComparison({ control: $("clear-compare"), username });
     announce("Comparison cleared");
   });
   document.addEventListener("click", (event) => {
@@ -468,7 +507,7 @@ function bind() {
     const a = find(b.dataset.username);
     if (b.dataset.action === "detail")
       openDetail(a, { focus: true, opener: b });
-    if (b.dataset.action === "compare") toggleCompare(a);
+    if (b.dataset.action === "compare") toggleCompare(a, b);
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && selected) closeDetail();
