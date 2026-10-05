@@ -2,6 +2,8 @@
 
 Explore Chess.com’s titled players by rating and public friend count. Built in the same warm, dark style as the tetizz chess projects.
 
+[Open the live site](https://chess-friend-graph.tetizz.workers.dev/).
+
 ## Explore
 
 - Bullet, blitz, rapid, and an overall average of all three.
@@ -44,5 +46,7 @@ npm run deploy
 ```
 
 Authenticate with the intended Cloudflare account before deployment. No credentials are committed to this repository.
+
+The current site was published with Cloudflare’s dashboard using **Upload your static files**. You can upload a ZIP containing the contents of `dist/` to the existing `chess-friend-graph` Worker without granting Wrangler additional account access.
 
 Part of [tetizz chess lab](https://tetizz.github.io/Home/).
