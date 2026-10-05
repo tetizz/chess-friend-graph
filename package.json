@@ -1,0 +1,20 @@
+{
+  "name": "chess-friend-graph",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Explore Chess.com titled players, public friend counts, and ratings.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "dev": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "prettier": "3.9.9",
+    "wrangler": "4.147.0"
+  }
+}

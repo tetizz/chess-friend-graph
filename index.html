@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#101511" />
+    <meta
+      name="description"
+      content="Explore saved public friend counts and ratings across Chess.com titled players."
+    />
+    <title>Chess Friend Graph · tetizz chess lab</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#explore">Skip to graph</a>
+    <header class="site-header">
+      <nav id="nav" aria-label="Main navigation">
+        <a class="brand" href="https://tetizz.github.io/Home/"
+          ><span class="brand-mark" aria-hidden="true">♞</span
+          ><span>tetizz <strong>chess lab</strong></span></a
+        >
+        <div class="nav-links">
+          <a href="#explore">Explore</a><a href="#methodology">About the data</a
+          ><a
+            href="https://github.com/tetizz/chess-friend-graph"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub ↗</a
+          ><button
+            id="theme-toggle"
+            class="icon-button"
+            type="button"
+            aria-label="Switch color theme"
+          >
+            ◐ <span>Theme</span>
+          </button>
+        </div>
+      </nav>
+    </header>
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">THE PEOPLE BEHIND THE PIECES</p>
+          <h1 id="hero-title">Every player has<br /><em>a circle.</em></h1>
+          <p class="hero-description">
+            Explore the connections around Chess.com’s titled players. Find a
+            familiar name, follow the ratings, and see where everyone lands.
+          </p>
+          <a class="button primary" href="#explore"
+            >Explore the graph <span aria-hidden="true">↘</span></a
+          ><span class="hero-caption"
+            >Public observations. A different view of the board.</span
+          >
+        </div>
+        <div class="hero-note" aria-hidden="true">
+          <span class="coordinate">e4 · c5 · Nf3</span>
+          <div class="orbit">
+            <span class="orbit-core">♞</span><i class="orbit-dot dot-one"></i
+            ><i class="orbit-dot dot-two"></i><i class="orbit-dot dot-three"></i
+            ><i class="orbit-dot dot-four"></i
+            ><span class="orbit-caption">A whole board<br />of people.</span>
+          </div>
+          <span class="coordinate bottom-coordinate"
+            >CHESS FRIEND GRAPH / 01</span
+          >
+        </div>
+      </section>
+      <section class="coverage-section" aria-label="Saved dataset coverage">
+        <div class="coverage-tiles">
+          <article>
+            <span class="tile-label">Players in the collection</span
+            ><strong id="roster-total">—</strong
+            ><span class="tile-note">Distinct saved accounts</span>
+          </article>
+          <article>
+            <span class="tile-label">Known friend counts</span
+            ><strong id="count-total">—</strong
+            ><span class="tile-note">Exact counts &amp; lower bounds</span>
+          </article>
+          <article>
+            <span class="tile-label">Ratings available</span
+            ><strong id="rating-total">—</strong
+            ><span class="tile-note">All three controls available</span>
+          </article>
+          <article>
+            <span class="tile-label">Dataset saved</span
+            ><strong id="data-date" class="date-value">—</strong
+            ><span class="tile-note">Dated observations, not a live feed</span>
+          </article>
+        </div>
+        <div class="coverage-line">
+          <span id="coverage-status">Loading the saved collection…</span>
+          <div class="coverage-track"><div id="coverage-bar"></div></div>
+          <span id="coverage-text"
+            >Friend-count coverage is separate from roster coverage.</span
+          >
+        </div>
+      </section>
+      <section
+        id="explore"
+        class="explore-section"
+        aria-labelledby="explore-title"
+      >
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">FIND YOUR PLACE ON THE BOARD</p>
+            <h2 id="explore-title">The graph</h2>
+          </div>
+          <div class="heading-actions">
+            <button id="share-view" type="button">Share view ↗</button
+            ><button id="export-csv" type="button">Export CSV ↓</button>
+          </div>
+        </div>
+        <div class="explorer">
+          <div class="filter-bar">
+            <label class="search-label" for="search"
+              ><span>Find a player</span
+              ><input
+                id="search"
+                type="search"
+                placeholder="Username or name…"
+                autocomplete="off"
+              /><kbd>/</kbd></label
+            ><label
+              >Rating axis<select id="axis">
+                <option value="overall">Overall average</option>
+                <option value="bullet">Bullet</option>
+                <option value="blitz">Blitz</option>
+                <option value="rapid">Rapid</option>
+              </select></label
+            ><label
+              >Count scale<select id="scale">
+                <option value="linear">Linear</option>
+                <option value="log">Logarithmic</option>
+              </select></label
+            ><label
+              >Count precision<select id="precision">
+                <option value="all">All observations</option>
+                <option value="exact">Exact counts</option>
+                <option value="lower_bound">Lower bounds</option>
+                <option value="unknown">Unknown counts</option>
+              </select></label
+            ><button id="reset-filters" class="quiet-button" type="button">
+              Reset filters
+            </button>
+          </div>
+          <div class="title-filter-row">
+            <span class="small-label">TITLES</span>
+            <div
+              id="title-filters"
+              class="title-filters"
+              aria-label="Filter by chess title"
+            ></div>
+          </div>
+          <details class="range-filters">
+            <summary>
+              Fine-tune the range <span aria-hidden="true">+</span>
+            </summary>
+            <div class="range-inputs">
+              <label
+                >Minimum rating<input
+                  id="min-rating"
+                  type="number"
+                  min="0"
+                  placeholder="Any" /></label
+              ><label
+                >Maximum rating<input
+                  id="max-rating"
+                  type="number"
+                  min="0"
+                  placeholder="Any" /></label
+              ><label
+                >Minimum friends<input
+                  id="min-friends"
+                  type="number"
+                  min="0"
+                  placeholder="Any" /></label
+              ><label
+                >Maximum friends<input
+                  id="max-friends"
+                  type="number"
+                  min="0"
+                  placeholder="Any"
+              /></label>
+            </div>
+          </details>
+          <div class="view-metrics" aria-label="Current selection">
+            <div>
+              <strong id="metric-matching">—</strong
+              ><span>matching players</span>
+            </div>
+            <div>
+              <strong id="metric-plotted">—</strong
+              ><span>points on the graph</span>
+            </div>
+            <div>
+              <strong id="metric-rating">—</strong><span>median rating</span>
+            </div>
+            <div>
+              <strong id="metric-friends">—</strong
+              ><span>median exact friends</span>
+            </div>
+          </div>
+          <div class="graph-layout">
+            <div class="graph-main">
+              <div class="graph-toolbar">
+                <div class="plot-legend">
+                  <span><i class="legend-circle"></i> Exact count</span
+                  ><span
+                    ><i class="legend-triangle"></i> At least this many ↑</span
+                  >
+                </div>
+                <div>
+                  <button
+                    id="zoom-in"
+                    class="quiet-button"
+                    type="button"
+                    aria-label="Zoom in on graph"
+                  >
+                    ＋</button
+                  ><button
+                    id="zoom-out"
+                    class="quiet-button"
+                    type="button"
+                    aria-label="Zoom out on graph"
+                  >
+                    −</button
+                  ><button id="reset-view" class="quiet-button" type="button">
+                    Reset view</button
+                  ><button id="export-png" class="quiet-button" type="button">
+                    Save image ↓
+                  </button>
+                </div>
+              </div>
+              <div class="chart-stage">
+                <canvas
+                  id="chart-canvas"
+                  width="1100"
+                  height="500"
+                  aria-hidden="true"
+                ></canvas
+                ><svg
+                  id="chart-overlay"
+                  viewBox="0 0 1100 500"
+                  role="group"
+                  aria-label="Selected rating versus public friend count. Select any player in the results table for accessible details."
+                ></svg>
+                <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+                <div id="chart-empty" class="empty-state chart-empty" hidden>
+                  No players have both a known friend count and this rating. Try
+                  another rating or clear the filters.
+                </div>
+              </div>
+              <p id="plot-note" class="plot-note">
+                Each point is a player. Select a point to see their details.
+                Unknown values stay in the results below.
+              </p>
+            </div>
+            <aside
+              id="player-detail"
+              class="player-detail"
+              aria-label="Player details"
+              aria-live="polite"
+            >
+              <button
+                id="close-detail"
+                type="button"
+                class="detail-close"
+                aria-label="Close player details"
+              >
+                ×
+              </button>
+              <div class="detail-placeholder">
+                <span class="detail-piece" aria-hidden="true">♞</span>
+                <p class="eyebrow">TAKE A CLOSER LOOK</p>
+                <h3>Meet a player.</h3>
+                <p>
+                  Select a point or a name below to explore their ratings and
+                  saved friend count.
+                </p>
+                <span class="detail-hint">Compare up to three players.</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+        <section
+          id="compare-panel"
+          class="compare-panel"
+          hidden
+          aria-labelledby="compare-title"
+        >
+          <div class="section-heading">
+            <h3 id="compare-title">Side by side</h3>
+            <button id="clear-compare" type="button">Clear comparison</button>
+          </div>
+          <div id="compare-cards" class="compare-cards"></div>
+        </section>
+        <section class="results" aria-labelledby="results-title">
+          <div class="section-heading results-heading">
+            <div>
+              <h3 id="results-title">
+                The players
+                <span id="result-count" class="result-count">—</span>
+              </h3>
+              <p>Every matching account, including unknown observations.</p>
+            </div>
+            <label class="sort-label"
+              >Sort by<select id="sort">
+                <option value="friends-desc">Most friends</option>
+                <option value="friends-asc">Fewest friends</option>
+                <option value="rating-desc">Highest rating</option>
+                <option value="rating-asc">Lowest rating</option>
+                <option value="username">Username A–Z</option>
+              </select></label
+            >
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Player</th>
+                  <th scope="col">Title</th>
+                  <th scope="col">Friends</th>
+                  <th scope="col">Bullet</th>
+                  <th scope="col">Blitz</th>
+                  <th scope="col">Rapid</th>
+                  <th scope="col">Overall</th>
+                  <th scope="col">Compare</th>
+                </tr>
+              </thead>
+              <tbody id="player-rows">
+                <tr>
+                  <td colspan="8" class="loading-row">
+                    Loading saved players…
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <button id="previous" type="button">← Previous</button
+            ><span id="page-status" aria-live="polite">—</span
+            ><button id="next" type="button">Next →</button>
+          </div>
+        </section>
+      </section>
+      <section id="methodology" class="methodology">
+        <div>
+          <p class="eyebrow">READING THE BOARD</p>
+          <h2>A snapshot.<br /><em>Not the whole story.</em></h2>
+          <p>
+            Counts describe public observations. They do not measure friendship
+            quality, online activity, request acceptance, or who added whom.
+          </p>
+          <a href="./data/dataset.json" download
+            >Download the public dataset ↓</a
+          >
+        </div>
+        <div class="methodology-details">
+          <details open>
+            <summary>What is included?</summary>
+            <p>
+              Saved public Chess.com accounts, friend counts, and ratings.
+              Roster coverage and friend-count coverage are measured separately.
+              A saved collection is partial and does not establish an
+              instantaneous or exhaustive census.
+            </p>
+          </details>
+          <details>
+            <summary>Exact, lower bound, or unknown?</summary>
+            <p>
+              An exact count records the observed total at its observation time.
+              A lower bound means at least that many friends; an arrow continues
+              upward because its upper total is unknown. Unknown values are
+              never treated as zero and remain visible in the table.
+            </p>
+          </details>
+          <details>
+            <summary>How do ratings work?</summary>
+            <p>
+              Bullet, Blitz, and Rapid are saved Chess.com ratings. Overall is
+              the arithmetic average of all three, available only when all three
+              are known. It is a descriptive comparison, not an official
+              Chess.com rating. Points need both a known count and the selected
+              rating.
+            </p>
+          </details>
+          <details>
+            <summary>How current are the observations?</summary>
+            <p>
+              The dataset save time, each observation time, and the date of the
+              last rated game are different. Older ratings may remain listed. A
+              counted public list covers a traversal period and is not an atomic
+              current account total.
+            </p>
+          </details>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <a class="footer-brand" href="https://tetizz.github.io/Home/"
+        >♞ tetizz chess lab</a
+      ><span>Chess Friend Graph · Saved public observations</span
+      ><a href="#explore">Back to the graph ↑</a>
+    </footer>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>
