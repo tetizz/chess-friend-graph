@@ -567,7 +567,7 @@ async function load() {
   text("coverage-status", "Loading saved observations…");
   $("explore")?.setAttribute("aria-busy", "true");
   try {
-    const response = await fetch("./data/dataset.json");
+    const response = await fetch("./data/dataset.json", { cache: "no-store" });
     if (!response.ok) throw Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (data.schemaVersion !== 1 || !Array.isArray(data.accounts))
