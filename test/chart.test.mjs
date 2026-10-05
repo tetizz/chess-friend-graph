@@ -172,10 +172,28 @@ test("renderer draws all eligible points, permits mobile scrolling, and preserve
   }
 });
 
-test('rating domain floor applies to sanitize, empty fit, and zoom without a maximum cap',()=>{
- const empty=sanitizeView(fitView([]),view);assert.equal(empty.minRating,100);assert(empty.maxRating>100);
- const panned=sanitizeView({minRating:-200,maxRating:1800},view);assert.equal(panned.minRating,100);assert.equal(panned.maxRating,2100);assert.equal(panned.maxRating-panned.minRating,2000);
- const invalid=sanitizeView({minRating:0,maxRating:0},view);assert.equal(invalid.minRating,100);assert(invalid.maxRating>100);
- const low={minRating:100,maxRating:1200,minFriends:0,maxFriends:500};const zoomed=zoomView(low,{rating:150,friends:200},3);assert.equal(zoomed.minRating,100);assert.equal(zoomed.maxRating-zoomed.minRating,3300);assert(zoomed.maxRating>100);
- const away=zoomView(view,{rating:1750,friends:300},.5);assert.equal(away.minRating,1375);assert.equal(away.maxRating,2125);
+test("rating domain floor applies to sanitize, empty fit, and zoom without a maximum cap", () => {
+  const empty = sanitizeView(fitView([]), view);
+  assert.equal(empty.minRating, 100);
+  assert(empty.maxRating > 100);
+  const panned = sanitizeView({ minRating: -200, maxRating: 1800 }, view);
+  assert.equal(panned.minRating, 100);
+  assert.equal(panned.maxRating, 2100);
+  assert.equal(panned.maxRating - panned.minRating, 2000);
+  const invalid = sanitizeView({ minRating: 0, maxRating: 0 }, view);
+  assert.equal(invalid.minRating, 100);
+  assert(invalid.maxRating > 100);
+  const low = {
+    minRating: 100,
+    maxRating: 1200,
+    minFriends: 0,
+    maxFriends: 500,
+  };
+  const zoomed = zoomView(low, { rating: 150, friends: 200 }, 3);
+  assert.equal(zoomed.minRating, 100);
+  assert.equal(zoomed.maxRating - zoomed.minRating, 3300);
+  assert(zoomed.maxRating > 100);
+  const away = zoomView(view, { rating: 1750, friends: 300 }, 0.5);
+  assert.equal(away.minRating, 1375);
+  assert.equal(away.maxRating, 2125);
 });
