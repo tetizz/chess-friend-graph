@@ -555,3 +555,176 @@ test("supplement owner-bound public pagination queries remain unchanged", async 
     url("Partial") + "/friends?sortby=alphabetical&page=2",
   );
 });
+
+async function traversalFixture(t, mutate = () => {}) {
+  let terminal;
+  const options = await fixture(t, ({ index, shards }) => {
+    terminal = {
+      status: "verified",
+      scope: "saved_terminal_traversal",
+      snapshotVerified: false,
+      traversalComplete: true,
+      count: 1,
+      rawRows: 1,
+      pages: 1,
+      startedAt: "2026-09-29T00:00:00Z",
+      endedAt: "2026-09-30T00:00:00Z",
+      method: "alphabetical_public_pagination",
+      issues: [],
+    };
+    shards[1].friendList.terminalEnumeration = terminal;
+    index.accounts[1].friendCount = {
+      ...index.accounts[1].friendCount,
+      value: 4,
+      display: "4",
+      precision: "exact",
+    };
+    mutate(terminal);
+  });
+  const manifest = JSON.parse(
+    await readFile(join(options.publishedDir, "publication-manifest.json")),
+  );
+  const savedTraversal = {
+    status: "verified",
+    traversalComplete: true,
+    snapshotVerified: false,
+    count: 1,
+    pageCount: 1,
+    startedAt: "2026-09-29T00:00:00Z",
+    endedAt: "2026-09-30T00:00:00Z",
+  };
+  const certificate = {
+    schemaVersion: 1,
+    kind: "public_saved_traversal_review",
+    status: "verified",
+    baseGmGeneration: generation,
+    username: "Partial",
+    sourceUrl: url("Partial") + "/friends",
+    observedAt: "2026-09-30T00:00:00Z",
+    friendListStatus: "partial",
+    friendListComplete: false,
+    displayedTotal: { value: 1, display: "1", precision: "lower_bound" },
+    exactCurrentCountCertified: false,
+    atomicSnapshotCertified: false,
+    account: { savedTraversal },
+    detail: { savedTraversal },
+    sourceShard: manifest.files["gm-friends/partial.json"],
+    consumerSha256: "c".repeat(64),
+    input: { bytes: 100, sha256: "d".repeat(64) },
+    terminalEnumerationSha256: sha(Buffer.from(JSON.stringify(terminal))),
+    qualification: "Complete saved traversal; current snapshot unverified.",
+  };
+  const bytes = Buffer.from(JSON.stringify(certificate));
+  const certificatePath = join(options.sourceDir, "public-review.json");
+  await writeFile(certificatePath, bytes);
+  return {
+    ...options,
+    savedTraversalReview: { certificatePath, expectedSha256: sha(bytes) },
+    certificate,
+  };
+}
+
+test("reviewed saved traversal projects strict metadata without changing count/list semantics", async (t) => {
+  const options = await traversalFixture(t);
+  const baseline = await exportPublicGmData({
+    ...options,
+    savedTraversalReview: undefined,
+  });
+  const receipt = await exportPublicGmData(options);
+  const before = JSON.parse(
+    await readFile(join(options.outputDir, baseline.generation, "index.json")),
+  );
+  const index = JSON.parse(
+    await readFile(join(options.outputDir, receipt.generation, "index.json")),
+  );
+  const detail = JSON.parse(
+    await readFile(
+      join(options.outputDir, receipt.generation, "friends/partial.json"),
+    ),
+  );
+  assert.deepEqual(
+    index.accounts[1].savedTraversal,
+    options.certificate.account.savedTraversal,
+  );
+  assert.deepEqual(detail.savedTraversal, index.accounts[1].savedTraversal);
+  assert.deepEqual(
+    index.accounts[1].friendCount,
+    before.accounts[1].friendCount,
+  );
+  assert.equal(index.accounts[1].friendCount.value, 4);
+  assert.equal(detail.friendList.status, "partial");
+  assert.equal(detail.friendList.complete, false);
+  assert.equal(detail.friendList.displayedTotal.precision, "lower_bound");
+  assert.equal(detail.friendList.displayedTotal.value, 1);
+  assert.equal(before.accounts[1].savedTraversal, undefined);
+  assert.deepEqual(Object.keys(detail.savedTraversal), [
+    "status",
+    "traversalComplete",
+    "snapshotVerified",
+    "count",
+    "pageCount",
+    "startedAt",
+    "endedAt",
+  ]);
+  assert.deepEqual(
+    await exportPublicGmData({ ...options, savedTraversalReview: undefined }),
+    baseline,
+  );
+});
+for (const [name, mutate] of [
+  ["count mismatch", (e) => (e.count = 2)],
+  ["raw rows mismatch", (e) => (e.rawRows = 2)],
+  ["zero pages", (e) => (e.pages = 0)],
+  ["fractional pages", (e) => (e.pages = 1.5)],
+  ["missing start", (e) => delete e.startedAt],
+  ["reversed dates", (e) => (e.startedAt = "2026-10-01T00:00:00Z")],
+  ["invalid calendar", (e) => (e.startedAt = "2026-02-30T00:00:00Z")],
+  ["snapshot claimed", (e) => (e.snapshotVerified = true)],
+  ["traversal unverified", (e) => (e.traversalComplete = false)],
+  ["issues present", (e) => (e.issues = ["missing page"])],
+])
+  test(`saved traversal rejects ${name}`, async (t) => {
+    const options = await traversalFixture(t, mutate);
+    await assert.rejects(exportPublicGmData(options));
+    await assert.rejects(access(join(options.outputDir, "current.json")));
+  });
+test("saved traversal rejects private certificate metadata and false certification", async (t) => {
+  const options = await traversalFixture(t);
+  options.certificate.account.savedTraversal.history = ["PRIVATE"];
+  let bytes = Buffer.from(JSON.stringify(options.certificate));
+  await writeFile(options.savedTraversalReview.certificatePath, bytes);
+  options.savedTraversalReview.expectedSha256 = sha(bytes);
+  await assert.rejects(exportPublicGmData(options));
+  delete options.certificate.account.savedTraversal.history;
+  options.certificate.atomicSnapshotCertified = true;
+  bytes = Buffer.from(JSON.stringify(options.certificate));
+  await writeFile(options.savedTraversalReview.certificatePath, bytes);
+  options.savedTraversalReview.expectedSha256 = sha(bytes);
+  await assert.rejects(exportPublicGmData(options));
+});
+
+for (const [name, mutate] of [
+  [
+    "contradictory terminal hash",
+    (c) => (c.terminalEnumerationSha256 = "0".repeat(64)),
+  ],
+  [
+    "extra private top-level field",
+    (c) => (c.privateAccount = { password: "PRIVATE" }),
+  ],
+  [
+    "extra private descriptor field",
+    (c) => (c.input.path = "private-proof.json"),
+  ],
+  ["invalid declared input hash", (c) => (c.input.sha256 = "not-a-hash")],
+]) {
+  test(`saved traversal rejects ${name}`, async (t) => {
+    const options = await traversalFixture(t);
+    mutate(options.certificate);
+    const bytes = Buffer.from(JSON.stringify(options.certificate));
+    await writeFile(options.savedTraversalReview.certificatePath, bytes);
+    options.savedTraversalReview.expectedSha256 = sha(bytes);
+    await assert.rejects(exportPublicGmData(options));
+    await assert.rejects(access(join(options.outputDir, "current.json")));
+  });
+}

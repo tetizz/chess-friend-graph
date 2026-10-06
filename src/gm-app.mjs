@@ -39,6 +39,59 @@ function validateSummary(l) {
   )
     throw Error("Invalid saved friend-list status.");
 }
+function validTraversalUtc(value) {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/.exec(
+    value,
+  );
+  if (!match) return false;
+  const milliseconds = (match[2] || "").padEnd(3, "0").slice(0, 3);
+  const normalized = match[1] + "." + milliseconds + "Z";
+  const parsed = Date.parse(normalized);
+  return (
+    Number.isFinite(parsed) && new Date(parsed).toISOString() === normalized
+  );
+}
+export function validateTraversal(value, count) {
+  if (value == null) return null;
+  const keys = [
+    "status",
+    "traversalComplete",
+    "snapshotVerified",
+    "count",
+    "pageCount",
+    "startedAt",
+    "endedAt",
+  ];
+  if (
+    typeof value !== "object" ||
+    value.status !== "verified" ||
+    value.traversalComplete !== true ||
+    value.snapshotVerified !== false ||
+    !Number.isSafeInteger(value.count) ||
+    value.count < 0 ||
+    value.count !== count ||
+    !Number.isSafeInteger(value.pageCount) ||
+    value.pageCount < 1 ||
+    ![value.startedAt, value.endedAt].every(validTraversalUtc) ||
+    Date.parse(value.endedAt) < Date.parse(value.startedAt)
+  )
+    throw Error("Invalid saved traversal evidence.");
+  return Object.fromEntries(keys.map((key) => [key, value[key]]));
+}
+export function traversalText(value) {
+  return value
+    ? "Saved traversal finished: " +
+        value.count.toLocaleString("en-US") +
+        " names across " +
+        value.pageCount +
+        " pages. Observed " +
+        date(value.startedAt) +
+        " to " +
+        date(value.endedAt) +
+        ". The list could change between pages; this saved count may differ from the current total."
+    : null;
+}
 export function validateIndex(data, generation) {
   if (
     data?.schemaVersion !== 1 ||
@@ -57,6 +110,7 @@ export function validateIndex(data, generation) {
       throw Error("Invalid saved GM identity.");
     seen.add(a.username.toLowerCase());
     validateSummary(a.friendList);
+    validateTraversal(a.savedTraversal, a.friendList.enumeratedCount);
   }
   return data;
 }
@@ -92,6 +146,16 @@ export function validateFriends(data, account, generation) {
     l.enumeratedCount !== account.friendList.enumeratedCount
   )
     throw Error("Roster and friend list summaries disagree.");
+  const actualTraversal = validateTraversal(
+    data.savedTraversal,
+    l.enumeratedCount,
+  );
+  const expectedTraversal = validateTraversal(
+    account.savedTraversal,
+    account.friendList.enumeratedCount,
+  );
+  if (JSON.stringify(actualTraversal) !== JSON.stringify(expectedTraversal))
+    throw Error("Roster and list traversal evidence disagree.");
   return data;
 }
 export function publicListDownload(data) {
@@ -101,6 +165,14 @@ export function publicListDownload(data) {
     generation: data.generation,
     username: data.username,
     generatedAt: data.generatedAt ?? null,
+    ...(data.savedTraversal
+      ? {
+          savedTraversal: validateTraversal(
+            data.savedTraversal,
+            l.enumeratedCount,
+          ),
+        }
+      : {}),
     friendList: {
       status: l.status,
       complete: l.complete,
@@ -113,6 +185,34 @@ export function publicListDownload(data) {
       })),
     },
   };
+}
+export function listDescription(list, traversal) {
+  const status = statusOf(list);
+  if (status === "partial" && traversal)
+    return "Partial saved list. All public pages were read; the displayed total was capped.";
+  if (status === "complete")
+    return "Complete saved public list / " + list.friends.length + " friends.";
+  if (status === "partial")
+    return (
+      "Partial saved list / " +
+      list.friends.length +
+      " captured friends. Additional friends may be missing."
+    );
+  return (
+    "Unknown list completeness / " +
+    list.friends.length +
+    " saved rows. Missing rows do not mean no friends."
+  );
+}
+export function displayedScanCount(list) {
+  if (!list.displayedTotal) return null;
+  const count = countText(list.displayedTotal);
+  return (
+    "Displayed during the scan: " +
+    count +
+    " friends" +
+    (list.displayedTotal.precision === "lower_bound" ? " (lower bound)." : ".")
+  );
 }
 function date(value) {
   return value && Number.isFinite(Date.parse(value))
@@ -292,16 +392,15 @@ function start() {
     );
     const status = statusOf(l);
     $("detail").append(
-      node(
-        "p",
-        status === "complete"
-          ? `Complete saved public list  /  ${l.friends.length} friends.`
-          : status === "partial"
-            ? `Partial saved list  /  ${l.friends.length} captured friends. Additional friends may be missing.`
-            : `Unknown list completeness  /  ${l.friends.length} saved rows. Missing rows do not mean no friends.`,
-      ),
+      node("p", listDescription(l, payload.savedTraversal)),
       node("p", "List observed " + date(l.observedAt), "fine"),
     );
+    if (displayedScanCount(l))
+      $("detail").append(node("p", displayedScanCount(l), "fine"));
+    if (payload.savedTraversal)
+      $("detail").append(
+        node("p", traversalText(payload.savedTraversal), "fine"),
+      );
     const links = node("p", null, "links");
     links.append(
       safeLink(a.profileUrl, "Profile"),

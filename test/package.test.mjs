@@ -449,3 +449,140 @@ for (const total of [
       );
     }));
 }
+
+async function traversalFixture(directory) {
+  const { base, index, detail } = await addGm(directory);
+  const summary = {
+    status: "partial",
+    complete: false,
+    enumeratedCount: 1,
+    observedAt: "2026-10-03T22:02:26.284Z",
+  };
+  index.accounts[0].friendList = { ...summary };
+  index.accounts[0].friendCount = {
+    value: 1340,
+    display: "1340",
+    precision: "exact",
+    observedAt: null,
+    sourceType: null,
+    sourceUrl: null,
+  };
+  index.coverage = { completeLists: 0, partialLists: 1, unknownLists: 0 };
+  detail.friendList = {
+    ...summary,
+    sourceUrl: null,
+    displayedTotal: { value: 999, display: "999+", precision: "lower_bound" },
+    friends: [
+      {
+        username: "Friend",
+        title: null,
+        profileUrl: "https://www.chess.com/member/Friend",
+      },
+    ],
+  };
+  const traversal = {
+    status: "verified",
+    traversalComplete: true,
+    snapshotVerified: false,
+    count: 1,
+    pageCount: 67,
+    startedAt: "2026-10-03T21:48:54.675Z",
+    endedAt: "2026-10-03T22:02:26.284Z",
+  };
+  index.accounts[0].savedTraversal = { ...traversal };
+  detail.savedTraversal = { ...traversal };
+  const save = async () => {
+    await writeFile(join(base, "index.json"), JSON.stringify(index));
+    await writeFile(join(base, "friends/onegm.json"), JSON.stringify(detail));
+  };
+  return { index, detail, save };
+}
+
+test("saved traversal preserves partial list and separate count measurements", () =>
+  fixture(async (directory) => {
+    const { index, detail, save } = await traversalFixture(directory);
+    await save();
+    const files = unzipSync(await createSiteZip(directory));
+    const shippedIndex = JSON.parse(
+      Buffer.from(files[`data/gm/${generation}/index.json`]),
+    );
+    const shippedDetail = JSON.parse(
+      Buffer.from(files[`data/gm/${generation}/friends/onegm.json`]),
+    );
+    assert.deepEqual(
+      shippedIndex.accounts[0].friendCount,
+      index.accounts[0].friendCount,
+    );
+    assert.deepEqual(shippedDetail.friendList, detail.friendList);
+    assert.deepEqual(
+      shippedIndex.accounts[0].savedTraversal,
+      shippedDetail.savedTraversal,
+    );
+  }));
+
+for (const issue of [
+  "missingDetail",
+  "unknownField",
+  "wrongCount",
+  "badPageCount",
+  "calendarDate",
+  "reversedDates",
+  "nanosecondOrder",
+  "snapshotUpgrade",
+  "placement",
+  "mixed",
+]) {
+  test(`saved traversal rejects ${issue}`, () =>
+    fixture(async (directory) => {
+      const { index, detail, save } = await traversalFixture(directory);
+      const a = index.accounts[0].savedTraversal,
+        d = detail.savedTraversal;
+      if (issue === "missingDetail") delete detail.savedTraversal;
+      if (issue === "unknownField") a.rawEvidence = d.rawEvidence = "private";
+      if (issue === "wrongCount") a.count = d.count = 2;
+      if (issue === "badPageCount") a.pageCount = d.pageCount = 0;
+      if (issue === "calendarDate")
+        a.startedAt = d.startedAt = "2026-02-30T00:00:00Z";
+      if (issue === "reversedDates")
+        a.startedAt = d.startedAt = "2026-10-04T00:00:00Z";
+      if (issue === "nanosecondOrder") {
+        a.startedAt = d.startedAt = "2026-10-03T22:02:26.284000002Z";
+        a.endedAt = d.endedAt = "2026-10-03T22:02:26.284000001Z";
+      }
+      if (issue === "snapshotUpgrade")
+        a.snapshotVerified = d.snapshotVerified = true;
+      if (issue === "placement") detail.friendList.savedTraversal = d;
+      if (issue === "mixed") d.pageCount = 68;
+      await save();
+      await assert.rejects(createSiteZip(directory));
+    }));
+}
+
+for (const issue of [
+  "observationMismatch",
+  "futureEnd",
+  "nanosecondFutureEnd",
+]) {
+  test(`saved traversal chronology rejects ${issue}`, () =>
+    fixture(async (directory) => {
+      const { index, detail, save } = await traversalFixture(directory);
+      if (issue === "observationMismatch")
+        index.accounts[0].friendList.observedAt = detail.friendList.observedAt =
+          "2026-10-03T22:02:26.285Z";
+      if (issue === "futureEnd")
+        detail.generatedAt = "2026-10-03T22:02:26.283Z";
+      if (issue === "nanosecondFutureEnd") {
+        index.accounts[0].savedTraversal.endedAt =
+          detail.savedTraversal.endedAt =
+          index.accounts[0].friendList.observedAt =
+          detail.friendList.observedAt =
+            "2026-10-03T22:02:26.284000002Z";
+        detail.generatedAt = "2026-10-03T22:02:26.284000001Z";
+      }
+      await save();
+      await assert.rejects(
+        createSiteZip(directory),
+        /saved traversal mismatch or invalid chronology/,
+      );
+    }));
+}

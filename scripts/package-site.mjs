@@ -189,6 +189,7 @@ export async function gmAssets(directory, generation) {
       "friendsUrl",
       "friendCount",
       "friendList",
+      "savedTraversal",
     ]);
     keys(account.friendList, [
       "status",
@@ -219,6 +220,7 @@ export async function gmAssets(directory, generation) {
       "username",
       "generatedAt",
       "friendList",
+      "savedTraversal",
     ]);
     if (
       detail.schemaVersion !== 1 ||
@@ -270,6 +272,53 @@ export async function gmAssets(directory, generation) {
       )
         throw Error("Invalid GM friend row.");
       friends.add(friend.username.toLowerCase());
+    }
+    if (
+      account.savedTraversal !== undefined ||
+      detail.savedTraversal !== undefined
+    ) {
+      const traversalKeys = [
+        "status",
+        "traversalComplete",
+        "snapshotVerified",
+        "count",
+        "pageCount",
+        "startedAt",
+        "endedAt",
+      ];
+      for (const traversal of [account.savedTraversal, detail.savedTraversal]) {
+        keys(traversal, traversalKeys);
+        if (
+          Object.keys(traversal).length !== traversalKeys.length ||
+          traversal.status !== "verified" ||
+          traversal.traversalComplete !== true ||
+          traversal.snapshotVerified !== false ||
+          !Number.isSafeInteger(traversal.count) ||
+          traversal.count < 0 ||
+          traversal.count !== friends.size ||
+          !Number.isSafeInteger(traversal.pageCount) ||
+          traversal.pageCount <= 0 ||
+          !date(traversal.startedAt) ||
+          !date(traversal.endedAt)
+        )
+          throw Error("Invalid saved GM traversal.");
+      }
+      const traversal = account.savedTraversal;
+      const orderedDate = (value) =>
+        value.slice(0, 19) +
+        "." +
+        (value.match(/\.(\d+)Z$/)?.[1] || "").padEnd(9, "0");
+      if (
+        traversalKeys.some(
+          (key) => traversal[key] !== detail.savedTraversal[key],
+        ) ||
+        orderedDate(traversal.startedAt) > orderedDate(traversal.endedAt) ||
+        traversal.endedAt !== list.observedAt ||
+        orderedDate(traversal.endedAt) > orderedDate(detail.generatedAt) ||
+        list.status !== "partial" ||
+        list.complete !== false
+      )
+        throw Error("GM saved traversal mismatch or invalid chronology.");
     }
   }
   if (
