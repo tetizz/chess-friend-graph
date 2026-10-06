@@ -290,6 +290,7 @@ function publicDetails(input) {
 export async function normalizePublicGmSupplement(
   { manifestPath, expectedSha256 },
   baseGmGeneration,
+  reviewAssociations = [],
 ) {
   assert(
     hash(expectedSha256),
@@ -300,6 +301,21 @@ export async function normalizePublicGmSupplement(
   const bytes = await bounded(root, basename(manifestPath), 1024 * 1024);
   assert(sha(bytes) === expectedSha256, "Supplement manifest pin mismatch");
   const manifest = JSON.parse(bytes);
+  assert(Array.isArray(reviewAssociations));
+  const reviews = new Map();
+  for (const r of reviewAssociations) {
+    only(r, ["username", "certificatePath", "bytes", "sha256"]);
+    assert(
+      username(r.username) &&
+        integer(r.bytes) &&
+        r.bytes <= 65536 &&
+        hash(r.sha256) &&
+        !reviews.has(r.username.toLowerCase()),
+    );
+    reviews.set(r.username.toLowerCase(), r);
+  }
+  const usedReviews = new Set(),
+    reviewPins = [];
   only(manifest, ["schemaVersion", "baseGmGeneration", "candidates"]);
   assert(
     manifest.schemaVersion === 1 &&
@@ -334,6 +350,7 @@ export async function normalizePublicGmSupplement(
       "username",
       "generatedAt",
       "friendList",
+      "savedTraversal",
     ]);
     assert(
       candidate.schemaVersion === 1 &&
@@ -385,13 +402,122 @@ export async function normalizePublicGmSupplement(
         "Complete supplement requires exact matching displayed total",
       );
     }
+    let reviewedTraversal;
+    if (candidate.savedTraversal !== undefined) {
+      const association = reviews.get(key);
+      assert(association, "Missing caller-pinned traversal review");
+      usedReviews.add(key);
+      const reviewRoot = await realpath(
+        dirname(resolve(association.certificatePath)),
+      );
+      await noAliases(reviewRoot, "Traversal review");
+      const certBytes = await bounded(
+        reviewRoot,
+        basename(association.certificatePath),
+        65536,
+        association,
+      );
+      reviewPins.push({
+        username: candidate.username,
+        bytes: certBytes.length,
+        sha256: sha(certBytes),
+      });
+      const cert = JSON.parse(certBytes);
+      only(cert, [
+        "schemaVersion",
+        "kind",
+        "status",
+        "baseGmGeneration",
+        "username",
+        "profileTitle",
+        "candidate",
+        "input",
+        "savedTraversal",
+        "friendListStatus",
+        "friendListComplete",
+        "displayedTotal",
+        "observedAt",
+        "sourceUrl",
+        "reviewedAt",
+      ]);
+      assert(
+        cert.schemaVersion === 1 &&
+          cert.kind === "public_new_capped_traversal_review" &&
+          cert.status === "verified" &&
+          cert.baseGmGeneration === baseGmGeneration &&
+          cert.username.toLowerCase() === key &&
+          cert.profileTitle === "GM",
+      );
+      only(cert.candidate, ["bytes", "sha256"]);
+      assert(
+        cert.candidate.bytes === descriptor.bytes &&
+          cert.candidate.sha256 === descriptor.sha256,
+      );
+      only(cert.input, ["bytes", "sha256"]);
+      assert(integer(cert.input.bytes) && hash(cert.input.sha256));
+      const t = candidate.savedTraversal;
+      only(t, [
+        "status",
+        "traversalComplete",
+        "snapshotVerified",
+        "count",
+        "pageCount",
+        "startedAt",
+        "endedAt",
+      ]);
+      assert(
+        t.status === "verified" &&
+          t.traversalComplete === true &&
+          t.snapshotVerified === false &&
+          integer(t.count) &&
+          t.count > 0 &&
+          integer(t.pageCount) &&
+          t.pageCount > 0,
+      );
+      assert(
+        t.count === friendList.friends.length &&
+          t.count === friendList.enumeratedCount &&
+          t.pageCount === Math.ceil(t.count / 20),
+      );
+      assert(
+        friendList.status === "partial" &&
+          friendList.complete === false &&
+          friendList.displayedTotal?.precision === "lower_bound" &&
+          friendList.displayedTotal.value > 0 &&
+          t.count >= friendList.displayedTotal.value,
+      );
+      for (const v of [t.startedAt, t.endedAt, cert.reviewedAt])
+        assert(date(v) !== null);
+      assert(
+        timestamp(t.startedAt) <= timestamp(t.endedAt) &&
+          t.endedAt === friendList.observedAt &&
+          timestamp(t.endedAt) <= timestamp(candidate.generatedAt) &&
+          timestamp(candidate.generatedAt) <= timestamp(cert.reviewedAt) &&
+          Date.parse(cert.reviewedAt) <= Date.now(),
+      );
+      assert.deepEqual(cert.savedTraversal, t);
+      assert.deepEqual(cert.displayedTotal, friendList.displayedTotal);
+      assert(
+        cert.friendListStatus === "partial" &&
+          cert.friendListComplete === false &&
+          cert.observedAt === t.endedAt &&
+          cert.sourceUrl === friendList.sourceUrl,
+      );
+      reviewedTraversal = t;
+    } else assert(!reviews.has(key), "Unassociated review");
     candidates.push({
+      ...(reviewedTraversal ? { savedTraversal: reviewedTraversal } : {}),
       username: candidate.username,
       generatedAt: candidate.generatedAt,
       friendList,
     });
   }
-  return { pin: { bytes: bytes.length, sha256: sha(bytes) }, candidates };
+  assert(usedReviews.size === reviews.size, "Unused traversal review");
+  return {
+    pin: { bytes: bytes.length, sha256: sha(bytes) },
+    candidates,
+    ...(reviewPins.length ? { reviewPins } : {}),
+  };
 }
 async function treeNames(root, prefix = "") {
   const names = [];
@@ -414,8 +540,10 @@ export async function exportPublicGmData({
   outputDir,
   supplemental,
   savedTraversalReview,
+  supplementalTraversalReviews = [],
   beforeInstall,
 } = {}) {
+  const initialTraversalReviews = structuredClone(supplementalTraversalReviews);
   await noAliases(sourceDir, "Source root");
   const root = await realpath(resolve(sourceDir));
   const output = resolve(outputDir);
@@ -735,14 +863,22 @@ export async function exportPublicGmData({
       accounts.some((account) => account.savedTraversal),
       "Unknown saved traversal review target",
     );
+  assert(
+    supplemental || supplementalTraversalReviews.length === 0,
+    "Reviews require supplemental manifest",
+  );
+  const supplementalReviewPins = [];
   const supplements = [];
   let generatedAt = index.generatedAt;
   if (supplemental) {
     const normalized = await normalizePublicGmSupplement(
       supplemental,
       pointer.generation,
+      initialTraversalReviews,
     );
     supplements.push(normalized.pin);
+    if (normalized.reviewPins)
+      supplementalReviewPins.push(...normalized.reviewPins);
     for (const candidate of normalized.candidates) {
       const key = candidate.username.toLowerCase();
       const account = accounts.find(
@@ -754,6 +890,8 @@ export async function exportPublicGmData({
         "Supplement conflicts with saved traversal review",
       );
       account.friendList = list(candidate.friendList);
+      if (candidate.savedTraversal)
+        account.savedTraversal = candidate.savedTraversal;
       files.set(
         `friends/${key}.json`,
         encode({
@@ -762,6 +900,9 @@ export async function exportPublicGmData({
           username: account.username,
           generatedAt: candidate.generatedAt,
           friendList: candidate.friendList,
+          ...(candidate.savedTraversal
+            ? { savedTraversal: candidate.savedTraversal }
+            : {}),
         }),
       );
       if (Date.parse(candidate.generatedAt) > Date.parse(generatedAt))
@@ -820,6 +961,9 @@ export async function exportPublicGmData({
         baseGmGeneration: pointer.generation,
         source: sourcePins,
         supplements,
+        ...(supplementalReviewPins.length
+          ? { supplementalTraversalReviews: supplementalReviewPins }
+          : {}),
         ...(traversalPin ? { savedTraversalReview: traversalPin } : {}),
         content,
       }),
@@ -875,8 +1019,19 @@ export async function exportPublicGmData({
       const check = await normalizePublicGmSupplement(
         supplemental,
         pointer.generation,
+        initialTraversalReviews,
       );
       assert.deepEqual(check.pin, supplements[0], "Supplement changed");
+      assert.deepEqual(
+        supplementalTraversalReviews,
+        initialTraversalReviews,
+        "Traversal associations changed",
+      );
+      assert.deepEqual(
+        check.reviewPins ?? [],
+        supplementalReviewPins,
+        "Traversal review pins changed",
+      );
     }
     if (savedTraversalReview)
       await bounded(
@@ -927,6 +1082,9 @@ export async function exportPublicGmData({
       baseGmGeneration: pointer.generation,
       source: sourcePins,
       supplements,
+      ...(supplementalReviewPins.length
+        ? { supplementalTraversalReviews: supplementalReviewPins }
+        : {}),
       ...(traversalPin ? { savedTraversalReview: traversalPin } : {}),
       files: pins,
       aggregateSha256: sha(encode(pins)),

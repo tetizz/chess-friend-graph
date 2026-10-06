@@ -879,3 +879,197 @@ for (const [name, mutate] of [
     await assert.rejects(access(join(options.outputDir, "current.json")));
   });
 }
+
+test("FULL export of two independently reviewed new capped traversals preserves historical counts and third account", async (t) => {
+  const options = await fixture(t);
+  const baseline = await exportPublicGmData({
+    ...options,
+    outputDir: options.outputDir + "-prior",
+  });
+  const packet = join(options.sourceDir, "packet");
+  await mkdir(packet);
+  const candidates = [],
+    reviews = [];
+  for (const [username, count, bound] of [
+    ["Partial", 24, 20],
+    ["Unknown", 44, 40],
+  ]) {
+    const savedTraversal = {
+      status: "verified",
+      traversalComplete: true,
+      snapshotVerified: false,
+      count,
+      pageCount: Math.ceil(count / 20),
+      startedAt: "2026-10-01T00:00:00.000Z",
+      endedAt: "2026-10-01T00:01:00.000Z",
+    };
+    const friendList = {
+      status: "partial",
+      complete: false,
+      enumeratedCount: count,
+      observedAt: savedTraversal.endedAt,
+      sourceUrl: url(username) + "/friends?sortby=alphabetical",
+      displayedTotal: {
+        value: bound,
+        display: bound + "+",
+        precision: "lower_bound",
+      },
+      friends: Array.from({ length: count }, (_, i) => ({
+        username: "friend" + String(i).padStart(3, "0"),
+        title: null,
+        profileUrl: url("friend" + String(i).padStart(3, "0")),
+      })),
+    };
+    const candidate = {
+      schemaVersion: 1,
+      baseGmGeneration: generation,
+      username,
+      generatedAt: savedTraversal.endedAt,
+      friendList,
+      savedTraversal,
+    };
+    const bytes = Buffer.from(JSON.stringify(candidate)),
+      candidatePath = join(packet, username.toLowerCase() + ".json");
+    await writeFile(candidatePath, bytes);
+    const pin = {
+      username,
+      path: candidatePath,
+      bytes: bytes.length,
+      sha256: sha(bytes),
+    };
+    candidates.push(pin);
+    const cert = {
+      schemaVersion: 1,
+      kind: "public_new_capped_traversal_review",
+      status: "verified",
+      baseGmGeneration: generation,
+      username,
+      profileTitle: "GM",
+      candidate: { bytes: bytes.length, sha256: sha(bytes) },
+      input: { bytes: 500, sha256: "b".repeat(64) },
+      savedTraversal,
+      friendListStatus: "partial",
+      friendListComplete: false,
+      displayedTotal: friendList.displayedTotal,
+      observedAt: friendList.observedAt,
+      sourceUrl: friendList.sourceUrl,
+      reviewedAt: "2026-10-02T00:00:00.000Z",
+    };
+    const cb = Buffer.from(JSON.stringify(cert)),
+      certificatePath = join(packet, username.toLowerCase() + "-review.json");
+    await writeFile(certificatePath, cb);
+    reviews.push({
+      username,
+      certificatePath,
+      bytes: cb.length,
+      sha256: sha(cb),
+    });
+  }
+  const mb = Buffer.from(
+      JSON.stringify({
+        schemaVersion: 1,
+        baseGmGeneration: generation,
+        candidates,
+      }),
+    ),
+    manifestPath = join(packet, "manifest.json");
+  await writeFile(manifestPath, mb);
+  const result = await exportPublicGmData({
+    ...options,
+    supplemental: { manifestPath, expectedSha256: sha(mb) },
+    supplementalTraversalReviews: reviews,
+  });
+  assert.equal(result.supplementalTraversalReviews.length, 2);
+  const index = JSON.parse(
+      await readFile(join(options.outputDir, result.generation, "index.json")),
+    ),
+    old = JSON.parse(
+      await readFile(
+        join(options.outputDir + "-prior", baseline.generation, "index.json"),
+      ),
+    );
+  assert.deepEqual(
+    index.accounts.map((a) => a.friendCount),
+    old.accounts.map((a) => a.friendCount),
+  );
+  assert.deepEqual(index.accounts[0], old.accounts[0]);
+  assert.deepEqual(index.coverage, {
+    completeLists: 1,
+    partialLists: 2,
+    unknownLists: 0,
+  });
+  for (const [username, count] of [
+    ["Partial", 24],
+    ["Unknown", 44],
+  ]) {
+    const a = index.accounts.find((a) => a.username === username),
+      detail = JSON.parse(
+        await readFile(
+          join(
+            options.outputDir,
+            result.generation,
+            "friends",
+            username.toLowerCase() + ".json",
+          ),
+        ),
+      );
+    assert.equal(a.friendList.complete, false);
+    assert.equal(detail.friendList.complete, false);
+    assert.equal(detail.friendList.displayedTotal.precision, "lower_bound");
+    assert.equal(a.savedTraversal.count, count);
+    assert.deepEqual(a.savedTraversal, detail.savedTraversal);
+    assert.equal(detail.friendList.friends.length, count);
+  }
+  const z = JSON.parse(
+      await readFile(
+        join(options.outputDir, result.generation, "friends/zero.json"),
+      ),
+    ),
+    prior = JSON.parse(
+      await readFile(
+        join(
+          options.outputDir + "-prior",
+          baseline.generation,
+          "friends/zero.json",
+        ),
+      ),
+    );
+  delete z.generation;
+  delete prior.generation;
+  assert.deepEqual(z, prior);
+  const mutatedReviews = structuredClone(reviews),
+    mutationOutput = options.outputDir + "-association-mutation";
+  await assert.rejects(
+    exportPublicGmData({
+      ...options,
+      outputDir: mutationOutput,
+      supplemental: { manifestPath, expectedSha256: sha(mb) },
+      supplementalTraversalReviews: mutatedReviews,
+      beforeInstall: async () => {
+        mutatedReviews[0].sha256 = "0".repeat(64);
+      },
+    }),
+  );
+  await assert.rejects(access(join(mutationOutput, "current.json")));
+  const swappedReviews = structuredClone(reviews),
+    swapOutput = options.outputDir + "-certificate-swap";
+  await assert.rejects(
+    exportPublicGmData({
+      ...options,
+      outputDir: swapOutput,
+      supplemental: { manifestPath, expectedSha256: sha(mb) },
+      supplementalTraversalReviews: swappedReviews,
+      beforeInstall: async () => {
+        const cert = JSON.parse(
+          await readFile(swappedReviews[0].certificatePath),
+        );
+        cert.reviewedAt = "2026-10-03T00:00:00.000Z";
+        const replacement = Buffer.from(JSON.stringify(cert));
+        await writeFile(swappedReviews[0].certificatePath, replacement);
+        swappedReviews[0].bytes = replacement.length;
+        swappedReviews[0].sha256 = sha(replacement);
+      },
+    }),
+  );
+  await assert.rejects(access(join(swapOutput, "current.json")));
+});
