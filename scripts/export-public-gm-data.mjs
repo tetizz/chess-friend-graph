@@ -22,6 +22,7 @@ import {
 import { pathToFileURL } from "node:url";
 
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const MAX_GM_SHARD_BYTES = 25 * 1024 * 1024;
 const hash = (value) =>
   typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 const username = (value) =>
@@ -325,7 +326,7 @@ export async function normalizePublicGmSupplement(
       ? relative(root, descriptor.path)
       : descriptor.path;
     const candidate = JSON.parse(
-      await bounded(root, candidatePath, 1024 * 1024, descriptor),
+      await bounded(root, candidatePath, MAX_GM_SHARD_BYTES, descriptor),
     );
     only(candidate, [
       "schemaVersion",
@@ -569,7 +570,7 @@ export async function exportPublicGmData({
       await bounded(
         publishedRoot,
         sourceName,
-        1024 * 1024,
+        MAX_GM_SHARD_BYTES,
         manifest.files[sourceName],
       ),
     );
@@ -863,7 +864,12 @@ export async function exportPublicGmData({
     );
     for (const account of accounts) {
       const name = `gm-friends/${account.username.toLowerCase()}.json`;
-      await bounded(publishedRoot, name, 1024 * 1024, manifest.files[name]);
+      await bounded(
+        publishedRoot,
+        name,
+        MAX_GM_SHARD_BYTES,
+        manifest.files[name],
+      );
     }
     if (supplemental) {
       const check = await normalizePublicGmSupplement(

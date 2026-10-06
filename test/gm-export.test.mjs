@@ -9,11 +9,162 @@ import {
   access,
   rename,
   symlink,
+  open,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { exportPublicGmData } from "../scripts/export-public-gm-data.mjs";
+
+const scaleFriends = () =>
+  Array.from({ length: 17000 }, (_, i) => {
+    const username = `ScaleFriend_${String(i).padStart(5, "0")}`;
+    return {
+      username,
+      title: null,
+      profileUrl: `https://www.chess.com/member/${username.toLowerCase()}`,
+    };
+  });
+
+async function repinSelected(options, name, descriptor) {
+  const manifestPath = join(options.publishedDir, "publication-manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath));
+  manifest.files[name] = descriptor;
+  const bytes = Buffer.from(JSON.stringify(manifest));
+  await writeFile(manifestPath, bytes);
+  const pointerPath = join(options.sourceDir, "gm-publication.json");
+  const pointer = JSON.parse(await readFile(pointerPath));
+  pointer.manifestSha256 = sha(bytes);
+  await writeFile(pointerPath, JSON.stringify(pointer));
+}
+
+test("scale: selected full list exceeds 1 MiB in UTF-8 and passes final physical recheck", async (t) => {
+  const options = await fixture(t, ({ index, shards }) => {
+    const friends = scaleFriends();
+    const friendList = {
+      status: "complete",
+      complete: true,
+      enumeratedCount: friends.length,
+      observedAt: "2026-09-30T00:00:00Z",
+    };
+    index.accounts[1].friendList = friendList;
+    shards[1].friendList = {
+      ...friendList,
+      friends,
+      sourceUrl: url("Partial") + "/friends",
+      displayedTotal: {
+        value: friends.length,
+        display: String(friends.length),
+        precision: "exact",
+      },
+      publicSourceNote: "é".repeat(25000),
+    };
+  });
+  const bytes = await readFile(
+    join(options.publishedDir, "gm-friends/partial.json"),
+  );
+  assert(bytes.length > 1024 * 1024);
+  assert(bytes.length > bytes.toString().length);
+  let reachedRecheck = false;
+  const receipt = await exportPublicGmData({
+    ...options,
+    beforeInstall: () => {
+      reachedRecheck = true;
+    },
+  });
+  assert(reachedRecheck);
+  const detail = JSON.parse(
+    await readFile(
+      join(options.outputDir, receipt.generation, "friends/partial.json"),
+    ),
+  );
+  assert.equal(detail.friendList.friends.length, 17000);
+  assert.equal(
+    new Set(detail.friendList.friends.map((f) => f.username.toLowerCase()))
+      .size,
+    17000,
+  );
+  assert.equal(detail.friendList.complete, true);
+  assert(!JSON.stringify(detail).includes("publicSourceNote"));
+});
+
+test("scale: pinned supplemental complete list exceeds 1 MiB with 17000 unique rows", async (t) => {
+  const options = await fixture(t);
+  const supplemental = await supplement(options, (c) => {
+    c.friendList.friends = scaleFriends();
+    c.friendList.enumeratedCount = 17000;
+    c.friendList.displayedTotal = {
+      value: 17000,
+      display: "17000",
+      precision: "exact",
+    };
+  });
+  const bytes = await readFile(
+    join(options.sourceDir, "reviewed/partial.json"),
+  );
+  assert(bytes.length > 1024 * 1024);
+  const receipt = await exportPublicGmData({ ...options, supplemental });
+  const detail = JSON.parse(
+    await readFile(
+      join(options.outputDir, receipt.generation, "friends/partial.json"),
+    ),
+  );
+  assert.equal(detail.friendList.friends.length, 17000);
+  assert.equal(detail.friendList.displayedTotal.value, 17000);
+});
+
+for (const kind of ["selected", "supplemental"])
+  test(`scale: ${kind} file above 25 MiB rejected before JSON read`, async (t) => {
+    const options = await fixture(t);
+    let supplemental;
+    const path =
+      kind === "selected"
+        ? join(options.publishedDir, "gm-friends/partial.json")
+        : join(options.sourceDir, "reviewed/partial.json");
+    if (kind === "supplemental") supplemental = await supplement(options);
+    const size = 25 * 1024 * 1024 + 1;
+    const handle = await open(path, "w");
+    await handle.truncate(size);
+    await handle.close();
+    const descriptor = { bytes: size, sha256: "0".repeat(64) };
+    if (kind === "selected")
+      await repinSelected(options, "gm-friends/partial.json", descriptor);
+    else {
+      const manifest = JSON.parse(await readFile(supplemental.manifestPath));
+      Object.assign(manifest.candidates[0], descriptor);
+      const bytes = Buffer.from(JSON.stringify(manifest));
+      await writeFile(supplemental.manifestPath, bytes);
+      supplemental.expectedSha256 = sha(bytes);
+    }
+    await assert.rejects(
+      exportPublicGmData({ ...options, supplemental }),
+      /Input exceeds bound/,
+    );
+    await assert.rejects(access(join(options.outputDir, "current.json")));
+  });
+
+test("scale: final recheck refuses growth above 25 MiB", async (t) => {
+  const options = await fixture(t);
+  await assert.rejects(
+    exportPublicGmData({
+      ...options,
+      beforeInstall: async () => {
+        const handle = await open(
+          join(options.publishedDir, "gm-friends/partial.json"),
+          "r+",
+        );
+        try {
+          await handle.truncate(25 * 1024 * 1024 + 1);
+        } finally {
+          await handle.close();
+        }
+      },
+    }),
+    /Input exceeds bound/,
+  );
+  await assert.rejects(access(join(options.outputDir, "current.json")));
+});
+
 const generation = "a".repeat(64),
   observedAt = "2026-10-01T00:00:00Z";
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
