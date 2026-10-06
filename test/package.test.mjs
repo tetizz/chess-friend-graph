@@ -18,6 +18,11 @@ import {
   packageSite,
   SITE_ASSETS,
 } from "../scripts/package-site.mjs";
+const fixtureBytes = (name) =>
+  Buffer.from(
+    name === "release.json" ? '{"version":1}\n' : `fixture:${name}\n\0`,
+    "utf8",
+  );
 
 async function fixture(run) {
   const workspace = await mkdtemp(join(tmpdir(), "chess-site-package-"));
@@ -25,10 +30,7 @@ async function fixture(run) {
   try {
     await mkdir(join(directory, "data"), { recursive: true });
     for (const name of SITE_ASSETS)
-      await writeFile(
-        join(directory, name),
-        Buffer.from(`fixture:${name}\n\0`, "utf8"),
-      );
+      await writeFile(join(directory, name), fixtureBytes(name));
     await run(directory, join(workspace, "verification"));
   } finally {
     await rm(workspace, { recursive: true, force: true });
@@ -43,10 +45,7 @@ test("ZIP has exact root-relative filenames and preserves every byte reproducibl
     const files = unzipSync(first);
     assert.deepEqual(Object.keys(files).sort(), [...SITE_ASSETS].sort());
     for (const name of SITE_ASSETS)
-      assert.deepEqual(
-        Buffer.from(files[name]),
-        Buffer.from(`fixture:${name}\n\0`),
-      );
+      assert.deepEqual(Buffer.from(files[name]), fixtureBytes(name));
     assert.ok(files["index.html"] && files["data/dataset.json"]);
   }));
 
@@ -148,3 +147,305 @@ test("symlink assets are rejected", async (t) =>
     }
     await assert.rejects(createSiteZip(directory), /Symlink deploy asset/);
   }));
+
+const generation = "a".repeat(64);
+async function addGm(directory) {
+  const base = join(directory, "data", "gm", generation);
+  await mkdir(join(base, "friends"), { recursive: true });
+  for (const name of ["gm.html", "gm-app.mjs", "gm-style.css"])
+    await writeFile(join(directory, name), "public UI\n");
+  const generatedAt = "2026-10-05T00:00:00Z";
+  const summary = {
+    status: "unknown",
+    complete: false,
+    enumeratedCount: 0,
+    observedAt: null,
+  };
+  const index = {
+    schemaVersion: 1,
+    generation,
+    generatedAt,
+    accounts: [
+      {
+        username: "OneGM",
+        title: "GM",
+        profileUrl: "https://www.chess.com/member/OneGM",
+        friendsUrl: "https://www.chess.com/member/OneGM/friends",
+        friendCount: {
+          value: null,
+          display: null,
+          precision: "unknown",
+          observedAt: null,
+          sourceType: null,
+          sourceUrl: null,
+        },
+        friendList: summary,
+      },
+    ],
+    coverage: { completeLists: 0, partialLists: 0, unknownLists: 1 },
+  };
+  const detail = {
+    schemaVersion: 1,
+    generation,
+    generatedAt,
+    username: "OneGM",
+    friendList: {
+      ...summary,
+      sourceUrl: null,
+      displayedTotal: null,
+      friends: [],
+    },
+  };
+  await writeFile(
+    join(directory, "release.json"),
+    JSON.stringify({
+      version: 1,
+      gmGeneration: generation,
+      baseGmGeneration: "b".repeat(64),
+    }),
+  );
+  await writeFile(join(base, "index.json"), JSON.stringify(index));
+  await writeFile(join(base, "friends", "onegm.json"), JSON.stringify(detail));
+  return { base, index, detail };
+}
+
+test("selected GM publication packages only pinned roster assets and preserves bytes", () =>
+  fixture(async (directory) => {
+    const { base } = await addGm(directory);
+    const first = await createSiteZip(directory);
+    assert.deepEqual(first, await createSiteZip(directory));
+    const files = unzipSync(first);
+    assert.equal(Object.keys(files).length, SITE_ASSETS.length + 5);
+    assert.deepEqual(
+      Buffer.from(files[`data/gm/${generation}/friends/onegm.json`]),
+      await readFile(join(base, "friends", "onegm.json")),
+    );
+    for (const name of SITE_ASSETS.filter((name) => name !== "release.json"))
+      assert.deepEqual(Buffer.from(files[name]), fixtureBytes(name));
+  }));
+
+for (const problem of [
+  "missing",
+  "extra",
+  "case",
+  "traversal",
+  "generation",
+  "private",
+  "stale",
+  "privateField",
+]) {
+  test(`GM packaging refuses ${problem}`, () =>
+    fixture(async (directory) => {
+      const { base, index, detail } = await addGm(directory);
+      const owner = join(base, "friends", "onegm.json");
+      if (problem === "missing" || problem === "case") {
+        await rm(owner);
+        if (problem === "case")
+          await writeFile(
+            join(base, "friends", "ONEGM.json"),
+            JSON.stringify(detail),
+          );
+      }
+      if (problem === "extra")
+        await writeFile(join(base, "friends", "extra.json"), "{}");
+      if (problem === "traversal") {
+        index.accounts[0].username = "../secret";
+        await writeFile(join(base, "index.json"), JSON.stringify(index));
+      }
+      if (problem === "generation") {
+        detail.generation = "b".repeat(64);
+        await writeFile(owner, JSON.stringify(detail));
+      }
+      if (problem === "private") await mkdir(join(base, "proof-data"));
+      if (problem === "stale")
+        await mkdir(join(directory, "data", "gm", "b".repeat(64)));
+      if (problem === "privateField") {
+        detail.friendList.rawResponse = "secret";
+        await writeFile(owner, JSON.stringify(detail));
+      }
+      await assert.rejects(createSiteZip(directory));
+    }));
+}
+
+test("GM detail size limit is checked before JSON parsing", () =>
+  fixture(async (directory) => {
+    const { base } = await addGm(directory);
+    await truncate(join(base, "friends", "onegm.json"), 25 * 1024 * 1024 + 1);
+    await assert.rejects(createSiteZip(directory), /Invalid public JSON asset/);
+  }));
+
+test("GM directory symlinks are rejected", async (t) =>
+  fixture(async (directory) => {
+    const { base } = await addGm(directory);
+    const target = join(directory, "linked-friends");
+    await mkdir(target);
+    await writeFile(
+      join(target, "onegm.json"),
+      await readFile(join(base, "friends", "onegm.json")),
+    );
+    await rm(join(base, "friends"), { recursive: true });
+    try {
+      await symlink(
+        target,
+        join(base, "friends"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+    } catch (error) {
+      if (["EPERM", "EACCES", "ENOSYS"].includes(error.code)) {
+        t.skip("OS does not permit fixture directory symlinks");
+        return;
+      }
+      throw error;
+    }
+    await assert.rejects(createSiteZip(directory), /Invalid GM directory/);
+  }));
+
+test("composed GM releases retain older per-account capture dates and reject future dates", () =>
+  fixture(async (directory) => {
+    const { base, detail } = await addGm(directory);
+    detail.generatedAt = "2026-10-04T00:00:00Z";
+    const path = join(base, "friends", "onegm.json");
+    await writeFile(path, JSON.stringify(detail));
+    await createSiteZip(directory);
+    detail.generatedAt = "2026-10-06T00:00:00Z";
+    await writeFile(path, JSON.stringify(detail));
+    await assert.rejects(createSiteZip(directory), /publication date mismatch/);
+  }));
+
+test("public GM release requires valid base generation metadata", () =>
+  fixture(async (directory) => {
+    await addGm(directory);
+    await writeFile(
+      join(directory, "release.json"),
+      JSON.stringify({
+        version: 1,
+        gmGeneration: generation,
+        baseGmGeneration: "invalid",
+      }),
+    );
+    await assert.rejects(
+      createSiteZip(directory),
+      /base GM release generation/,
+    );
+  }));
+
+for (const issue of [
+  "calendar",
+  "unknownRows",
+  "identityUrl",
+  "secretQuery",
+  "completeTotal",
+]) {
+  test(`GM public validation rejects ${issue}`, () =>
+    fixture(async (directory) => {
+      const { base, index, detail } = await addGm(directory);
+      if (issue === "calendar") index.generatedAt = "2026-02-30T00:00:00Z";
+      if (issue === "identityUrl")
+        index.accounts[0].profileUrl = "https://www.chess.com/member/AnotherGM";
+      if (issue === "secretQuery")
+        detail.friendList.sourceUrl =
+          "https://www.chess.com/member/OneGM/friends?token=secret";
+      if (issue === "unknownRows") {
+        index.accounts[0].friendList.enumeratedCount = 1;
+        detail.friendList.enumeratedCount = 1;
+        detail.friendList.friends = [
+          {
+            username: "Friend",
+            title: null,
+            profileUrl: "https://www.chess.com/member/Friend",
+          },
+        ];
+      }
+      if (issue === "completeTotal") {
+        index.accounts[0].friendList.status = detail.friendList.status =
+          "complete";
+        index.accounts[0].friendList.complete =
+          detail.friendList.complete = true;
+        index.coverage = { completeLists: 1, partialLists: 0, unknownLists: 0 };
+        detail.friendList.displayedTotal = {
+          value: 1,
+          display: "1",
+          precision: "exact",
+        };
+      }
+      await writeFile(join(base, "index.json"), JSON.stringify(index));
+      await writeFile(join(base, "friends/onegm.json"), JSON.stringify(detail));
+      await assert.rejects(createSiteZip(directory));
+    }));
+}
+
+test("roster provenance accepts valid UTC fractions and excludes private headers", () =>
+  fixture(async (directory) => {
+    const { base, index } = await addGm(directory);
+    index.roster = {
+      sourceUrl: "https://api.chess.com/pub/titled/GM",
+      observedAt: "2026-10-04T13:52:00.123456789Z",
+      lastModified: null,
+      scope: "GM",
+      accounts: 1,
+    };
+    const path = join(base, "index.json");
+    await writeFile(path, JSON.stringify(index));
+    await createSiteZip(directory);
+    index.roster.headers = { cookie: "private" };
+    await writeFile(path, JSON.stringify(index));
+    await assert.rejects(
+      createSiteZip(directory),
+      /private or invalid GM public fields/,
+    );
+  }));
+
+test("roster metadata preserves original HTTP Last-Modified text and nullable snapshot count", () =>
+  fixture(async (directory) => {
+    const { base, index } = await addGm(directory);
+    const lastModified = "Saturday, 03-Oct-2026 12:44:42 GMT+0000";
+    index.roster = {
+      sourceUrl: "https://api.chess.com/pub/titled/GM",
+      observedAt: "2026-10-03T21:56:32.9357677Z",
+      lastModified,
+      scope: "published_GM_API_snapshot",
+      accounts: 1744,
+    };
+    const path = join(base, "index.json");
+    await writeFile(path, JSON.stringify(index));
+    let unpacked = unzipSync(await createSiteZip(directory));
+    assert.equal(
+      JSON.parse(Buffer.from(unpacked[`data/gm/${generation}/index.json`]))
+        .roster.lastModified,
+      lastModified,
+    );
+    index.roster.accounts = null;
+    await writeFile(path, JSON.stringify(index));
+    await createSiteZip(directory);
+    index.roster.lastModified = "invalid HTTP date";
+    await writeFile(path, JSON.stringify(index));
+    await assert.rejects(
+      createSiteZip(directory),
+      /Invalid GM roster provenance/,
+    );
+  }));
+
+for (const total of [
+  null,
+  { value: null, display: null, precision: "unknown" },
+  { value: 0, display: "0+", precision: "lower_bound" },
+]) {
+  test(`complete GM list refuses ${total?.precision ?? "null"} displayed total`, () =>
+    fixture(async (directory) => {
+      const { base, index, detail } = await addGm(directory);
+      index.accounts[0].friendList.status = detail.friendList.status =
+        "complete";
+      index.accounts[0].friendList.complete = detail.friendList.complete = true;
+      index.coverage = { completeLists: 1, partialLists: 0, unknownLists: 0 };
+      detail.friendList.displayedTotal = total;
+      await writeFile(join(base, "index.json"), JSON.stringify(index));
+      await writeFile(
+        join(base, "friends", "onegm.json"),
+        JSON.stringify(detail),
+      );
+      await assert.rejects(
+        createSiteZip(directory),
+        /GM complete list total mismatch/,
+      );
+    }));
+}

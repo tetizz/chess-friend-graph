@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Grandmasters and friends / Chess connections</title>
+    <link rel="stylesheet" href="gm-style.css" />
+  </head>
+  <body>
+    <main>
+      <nav>
+        <a href="/"><- Player graph</a
+        ><button id="refresh" type="button">Refresh saved data</button>
+      </nav>
+      <header>
+        <p class="eyebrow">CHESS CONNECTIONS</p>
+        <h1>Grandmasters & friends</h1>
+        <p>
+          Every saved GM account, with the public friend rows captured for each
+          one.
+        </p>
+      </header>
+      <section class="coverage">
+        <p id="coverage" role="status">Loading saved GM roster...</p>
+        <p id="saved"></p>
+        <p id="roster-source" class="fine"></p>
+        <p class="fine">
+          Exact account counts and complete friend lists are separate
+          observations. Unknown never means zero. These saved lists do not show
+          who sent a request or an acceptance rate.
+        </p>
+      </section>
+      <div class="layout">
+        <section class="panel">
+          <h2>Find a grandmaster</h2>
+          <div class="controls">
+            <label
+              >Username<input
+                id="search"
+                type="search"
+                autocomplete="off"
+                placeholder="Search all saved GMs" /></label
+            ><label
+              >Friend-list status<select id="status">
+                <option value="all">All lists</option>
+                <option value="complete">Complete</option>
+                <option value="partial">Partial</option>
+                <option value="unknown">Unknown</option>
+              </select></label
+            >
+          </div>
+          <p id="roster-status" aria-live="polite"></p>
+          <div id="roster"></div>
+          <div class="pagination">
+            <button id="previous" type="button">Previous</button
+            ><span id="page"></span
+            ><button id="next" type="button">Next</button>
+          </div>
+        </section>
+        <section class="panel" id="detail" aria-labelledby="detail-title">
+          <h2 id="detail-title" tabindex="-1">Choose a grandmaster</h2>
+          <p>Select a player to load their saved public friend list.</p>
+        </section>
+      </div>
+      <footer>Saved public observations, with source dates.</footer>
+    </main>
+    <script type="module" src="gm-app.mjs"></script>
+  </body>
+</html>
