@@ -7,9 +7,6 @@
   .layout {
     animation: gmEnter 0.36s 0.06s ease-out both;
   }
-  #detail > h2 {
-    animation: gmEnter 0.2s ease-out both;
-  }
   .player {
     transition:
       background 0.16s ease,
