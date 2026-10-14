@@ -344,7 +344,14 @@ function start() {
       : "No matching GMs";
   }
   function heading(a) {
-    $("detail").replaceChildren();
+    const detail = $("detail");
+    const existing = detail.firstElementChild;
+    if (existing?.id === "detail-title" && existing.textContent === a.username) {
+      // Keep the selected heading attached: async completion must not drop focus.
+      while (existing.nextSibling) existing.nextSibling.remove();
+      return existing;
+    }
+    detail.replaceChildren();
     const h = node("h2", a.username);
     h.id = "detail-title";
     h.tabIndex = -1;
