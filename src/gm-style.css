@@ -4,9 +4,6 @@
   .coverage {
     animation: gmEnter 0.32s ease-out both;
   }
-  .layout {
-    animation: gmEnter 0.36s 0.06s ease-out both;
-  }
   .player {
     transition:
       background 0.16s ease,
