@@ -249,12 +249,50 @@ function safeLink(url, label) {
   return a;
 }
 export async function fetchJson(url, fetcher = fetch) {
-  const r = await fetcher(url, { cache: "no-store" });
+  const immutable =
+    /^\.\/data\/gm\/[a-f0-9]{64}\/(?:index\.json|friends\/[a-z0-9_-]{1,50}\.json)$/.test(
+      url,
+    );
+  const r = await fetcher(url, { cache: immutable ? "default" : "no-store" });
   if (!r.ok) throw Error("Saved data unavailable (HTTP " + r.status + ").");
   return r.json();
 }
+export function createFriendLoader(fetcher = fetch, capacity = 32) {
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 128)
+    throw Error("Invalid friend cache capacity.");
+  const entries = new Map();
+  return async (account, generation) => {
+    const username = account?.username?.toLowerCase();
+    if (
+      !GEN.test(generation || "") ||
+      !/^[a-z0-9_-]{1,50}$/.test(username || "")
+    )
+      throw Error("Invalid saved friend identity.");
+    const key = generation + "/" + username;
+    let pending = entries.get(key);
+    if (pending) {
+      entries.delete(key);
+      entries.set(key, pending);
+    } else {
+      pending = fetchJson(
+        "./data/gm/" + key.replace("/", "/friends/") + ".json",
+        fetcher,
+      ).then((data) => validateFriends(data, account, generation));
+      entries.set(key, pending);
+      while (entries.size > capacity)
+        entries.delete(entries.keys().next().value);
+    }
+    try {
+      return validateFriends(await pending, account, generation);
+    } catch (error) {
+      if (entries.get(key) === pending) entries.delete(key);
+      throw error;
+    }
+  };
+}
 if (typeof document !== "undefined") start();
 function start() {
+  const loadFriends = createFriendLoader();
   const $ = (id) => document.getElementById(id),
     node = (tag, text, cls) => {
       const n = document.createElement(tag);
@@ -350,16 +388,7 @@ function start() {
     );
     renderRoster();
     try {
-      const data = validateFriends(
-        await fetchJson(
-          publication.base +
-            "friends/" +
-            encodeURIComponent(a.username.toLowerCase()) +
-            ".json",
-        ),
-        a,
-        publication.generation,
-      );
+      const data = await loadFriends(a, publication.generation);
       if (token !== selectionToken) return;
       payload = data;
       renderDetail();

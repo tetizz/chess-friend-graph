@@ -98,6 +98,18 @@ test("isolated build pins GM selection, preserves main bytes and refuses stale o
     for (const [path, bytes] of assets)
       await writeFile(join(fixture, path), bytes);
     await run(process.execPath, [join(fixture, "scripts/build.mjs")]);
+    const headers = await readFile(join(fixture, "dist/_headers"), "utf8");
+    assert.ok(
+      headers.includes(
+        `/data/gm/${generation}/*\n  Cache-Control: public, max-age=31536000, immutable`,
+      ),
+    );
+    assert.ok(!headers.includes(`/data/gm/${"b".repeat(64)}/*`));
+    assert.ok(!headers.includes("/data/*\n"));
+    assert.ok(
+      headers.includes("/data/dataset.json\n  Cache-Control: no-store"),
+    );
+    assert.ok(headers.includes("/release.json\n  Cache-Control: no-store"));
     assert.equal(
       JSON.parse(await readFile(join(fixture, "dist/release.json")))
         .gmGeneration,

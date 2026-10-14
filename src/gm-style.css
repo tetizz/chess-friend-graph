@@ -1,4 +1,35 @@
 @import url("./style.css");
+@media (prefers-reduced-motion: no-preference) {
+  header,
+  .coverage {
+    animation: gmEnter 0.32s ease-out both;
+  }
+  .layout {
+    animation: gmEnter 0.36s 0.06s ease-out both;
+  }
+  #detail > h2 {
+    animation: gmEnter 0.2s ease-out both;
+  }
+  .player {
+    transition:
+      background 0.16s ease,
+      border-color 0.16s ease,
+      transform 0.16s ease;
+  }
+  .player:active {
+    transform: translateY(1px);
+  }
+  @keyframes gmEnter {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
 body {
   background: var(--bg, #101711);
   color: var(--text, #edf3e8);
