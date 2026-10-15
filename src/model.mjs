@@ -222,11 +222,16 @@ export function filterPlayers(accounts, state = {}) {
 
 export function sortPlayers(accounts, key = "friends-desc", axis = "overall") {
   const result = [...accounts];
+  let baseCollator, tieCollator;
   const usernameOrder = (a, b) =>
-    String(a.username ?? "").localeCompare(String(b.username ?? ""), "en", {
-      sensitivity: "base",
-    }) ||
-    String(a.username ?? "").localeCompare(String(b.username ?? ""), "en");
+    (baseCollator ??= new Intl.Collator("en", { sensitivity: "base" })).compare(
+      String(a.username ?? ""),
+      String(b.username ?? ""),
+    ) ||
+    (tieCollator ??= new Intl.Collator("en")).compare(
+      String(a.username ?? ""),
+      String(b.username ?? ""),
+    );
   if (key === "username") return result.sort(usernameOrder);
   const rating = key.startsWith("rating-");
   const direction = key.endsWith("-asc") ? 1 : -1;
