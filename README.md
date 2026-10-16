@@ -53,7 +53,7 @@ It writes a separate immutable public generation under `public/data/gm/`, preser
 
 The deployment target is [tetizz-chess-friend-graph.pages.dev](https://tetizz-chess-friend-graph.pages.dev/), using the Pages project `tetizz-chess-friend-graph`. Deployment and live verification are separate steps; changing this configuration does not publish the site.
 
-The existing build writes the validated public dataset and complete selected GM generation into `dist/`. Pages uses the separate `wrangler.pages.jsonc` configuration with `pages_build_output_dir` set to `./dist`. No Functions or Worker script is needed.
+The existing build writes the validated public dataset and complete selected GM generation into `dist/`. Pages uses the default root `wrangler.jsonc` configuration with `pages_build_output_dir` set to `./dist`. No Functions or Worker script is needed.
 
 ```sh
 npm ci
@@ -75,11 +75,11 @@ To build and publish to the production branch:
 npm run deploy -- --branch main
 ```
 
-The deploy script builds `dist/` and runs `wrangler pages deploy dist --config wrangler.pages.jsonc --project-name tetizz-chess-friend-graph`. A direct-upload dashboard deployment must upload the contents of `dist/` to this Pages project. `npm run package` still creates a fresh verified ZIP and receipt in `verification/`, preserving prior packages and recording every included file's SHA-256. It verifies the selected GM closure and unpacked bytes, rejects unexpected files and symlinks, and excludes local selectors and credentials.
+The deploy script builds `dist/` and runs `wrangler pages deploy dist --project-name tetizz-chess-friend-graph`. A direct-upload dashboard deployment must upload the contents of `dist/` to this Pages project. `npm run package` still creates a fresh verified ZIP and receipt in `verification/`, preserving prior packages and recording every included file's SHA-256. It verifies the selected GM closure and unpacked bytes, rejects unexpected files and symlinks, and excludes local selectors and credentials.
 
 The build's `_headers` and root `404.html` are unchanged. Pages must serve the security headers, the dataset and release no-store rules, immutable GM assets, and the custom missing-page response. Pages provides native clean HTML redirects; after publication verify `/`, `/gm`, `/gm.html`, `/gm/`, an unknown route's 404 status, and the referenced GM assets before calling the migration live. Do not add an SPA fallback or wildcard redirect that hides missing data or pages.
 
-The original Workers Static Assets configuration remains in `wrangler.jsonc`, including its `auto-trailing-slash` and `404-page` settings. `npm run dev:worker` and `npm run deploy:worker` retain that compatibility path; they are not the Pages release commands. The existing CI Worker dry run remains a compatibility check, not proof of a Pages deployment.
+The original Workers Static Assets configuration is preserved byte-for-byte in `wrangler.worker.jsonc`, including its `auto-trailing-slash` and `404-page` settings. `npm run dev:worker` and `npm run deploy:worker` explicitly select `--config wrangler.worker.jsonc` for that compatibility path; they are not the Pages release commands. The existing CI Worker dry run remains a compatibility check, not proof of a Pages deployment.
 
 For a review build that preserves `dist/`, run `node scripts/build.mjs --output verification/<new-stage-name>`. Package that staged directory with the exported `packageSite({sourceDirectory, outputDirectory})` API.
 
