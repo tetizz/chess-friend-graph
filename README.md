@@ -51,7 +51,9 @@ It writes a separate immutable public generation under `public/data/gm/`, preser
 
 ## Cloudflare Pages
 
-The deployment target is [tetizz-chess-friend-graph.pages.dev](https://tetizz-chess-friend-graph.pages.dev/), using the Pages project `tetizz-chess-friend-graph`. Deployment and live verification are separate steps; changing this configuration does not publish the site.
+Production is [tetizz-chess-friend-graph.pages.dev](https://tetizz-chess-friend-graph.pages.dev/), using the Pages project `tetizz-chess-friend-graph`. Verified on October 16, 2026: all 1,758 public graph bodies matched the built bytes, with security/cache headers, clean GM routes and the custom 404 checked (1,811 combined Home/graph checks passed).
+
+The legacy `chess-friend-graph.tetizz.workers.dev` frontend now returns a verified 308 redirect to the Pages origin, preserving the requested path and query with `Cache-Control: no-store`. Its tested source is `scripts/legacy-redirect.mjs`; the separate Worker-only `wrangler.redirect.jsonc` selects it without assets or bindings. To publish that redirect explicitly, use `npx wrangler deploy --config wrangler.redirect.jsonc`. The default deployment remains Pages.
 
 The existing build writes the validated public dataset and complete selected GM generation into `dist/`. Pages uses the default root `wrangler.jsonc` configuration with `pages_build_output_dir` set to `./dist`. No Functions or Worker script is needed.
 
