@@ -11,7 +11,7 @@
     "dev": "wrangler pages dev dist",
     "dev:worker": "wrangler dev --config wrangler.worker.jsonc",
     "deploy": "npm run build && wrangler pages deploy dist --project-name tetizz-chess-friend-graph",
-    "deploy:worker": "npm run build && wrangler deploy --config wrangler.worker.jsonc"
+    "deploy:worker": "wrangler deploy --config wrangler.redirect.jsonc"
   },
   "engines": {
     "node": ">=22"

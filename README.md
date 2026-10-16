@@ -81,7 +81,7 @@ The deploy script builds `dist/` and runs `wrangler pages deploy dist --project-
 
 The build's `_headers` and root `404.html` are unchanged. Pages must serve the security headers, the dataset and release no-store rules, immutable GM assets, and the custom missing-page response. Pages provides native clean HTML redirects; after publication verify `/`, `/gm`, `/gm.html`, `/gm/`, an unknown route's 404 status, and the referenced GM assets before calling the migration live. Do not add an SPA fallback or wildcard redirect that hides missing data or pages.
 
-The original Workers Static Assets configuration is preserved byte-for-byte in `wrangler.worker.jsonc`, including its `auto-trailing-slash` and `404-page` settings. `npm run dev:worker` and `npm run deploy:worker` explicitly select `--config wrangler.worker.jsonc` for that compatibility path; they are not the Pages release commands. The existing CI Worker dry run remains a compatibility check, not proof of a Pages deployment.
+The original Workers Static Assets configuration is preserved byte-for-byte in `wrangler.worker.jsonc`, including its `auto-trailing-slash` and `404-page` settings, for local development and dry-run compatibility checks only. `npm run dev:worker` uses that configuration locally. `npm run deploy:worker` maintains only the legacy redirect through `wrangler.redirect.jsonc`, without building or publishing static assets. The existing CI Worker dry run remains a compatibility check, not proof of a Pages deployment.
 
 For a review build that preserves `dist/`, run `node scripts/build.mjs --output verification/<new-stage-name>`. Package that staged directory with the exported `packageSite({sourceDirectory, outputDirectory})` API.
 
