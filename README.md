@@ -2,7 +2,7 @@
 
 Explore Chess.com’s titled players by rating and public friend count. Built in the same warm, dark style as the tetizz chess projects.
 
-[Open the live site](https://chess-friend-graph.tetizz.workers.dev/).
+[Open the live site](https://tetizz-chess-friend-graph.pages.dev/).
 
 ## Explore
 
@@ -49,24 +49,37 @@ node scripts/export-public-gm-data.mjs --source /path/to/chess-friend-graph --ou
 
 It writes a separate immutable public generation under `public/data/gm/`, preserving the collector’s generation as `baseGmGeneration`. Audited supplemental lists require an independently supplied manifest digest via `--supplement <manifest.json> --supplement-sha256 <digest>`; they update only their target lists and preserve the saved count observations. The local `current.json` selector is build input and is never packaged.
 
-## Cloudflare
+## Cloudflare Pages
 
-This repository uses Workers Static Assets. The deployable files are built into `dist/`; the Worker configuration is in `wrangler.jsonc`.
+The deployment target is [tetizz-chess-friend-graph.pages.dev](https://tetizz-chess-friend-graph.pages.dev/), using the Pages project `tetizz-chess-friend-graph`. Deployment and live verification are separate steps; changing this configuration does not publish the site.
+
+The existing build writes the validated public dataset and complete selected GM generation into `dist/`. Pages uses the separate `wrangler.pages.jsonc` configuration with `pages_build_output_dir` set to `./dist`. No Functions or Worker script is needed.
+
+```sh
+npm ci
+npm test
+npm run build
+npm run dev
+```
+
+Authenticate with the intended Cloudflare account before deployment. No credentials are committed. If the Pages project does not exist yet, create it once with the intended production branch:
 
 ```sh
 npx wrangler whoami
-npm run deploy
+npx wrangler pages project create tetizz-chess-friend-graph --production-branch main
 ```
 
-Authenticate with the intended Cloudflare account before deployment. No credentials are committed to this repository.
-
-The current site was published with Cloudflare’s dashboard using **Upload your static files**. To prepare an update:
+To build and publish to the production branch:
 
 ```sh
-npm run package
+npm run deploy -- --branch main
 ```
 
-Upload the ZIP at the printed `output` path through **New deployment** on the existing `chess-friend-graph` Worker. Each run creates a new archive and JSON receipt in `verification/`, preserving earlier packages. The receipt records SHA-256 hashes for the archive and every included file. The command packages the public site assets and selected GM generation, checks their sizes, and verifies their bytes after unpacking. It refuses unexpected files and symlinks. Identical inputs produce identical ZIP bytes; archive names and receipts are unique. Both stay out of Git. Dashboard uploads do not require granting Wrangler additional account access.
+The deploy script builds `dist/` and runs `wrangler pages deploy dist --config wrangler.pages.jsonc --project-name tetizz-chess-friend-graph`. A direct-upload dashboard deployment must upload the contents of `dist/` to this Pages project. `npm run package` still creates a fresh verified ZIP and receipt in `verification/`, preserving prior packages and recording every included file's SHA-256. It verifies the selected GM closure and unpacked bytes, rejects unexpected files and symlinks, and excludes local selectors and credentials.
+
+The build's `_headers` and root `404.html` are unchanged. Pages must serve the security headers, the dataset and release no-store rules, immutable GM assets, and the custom missing-page response. Pages provides native clean HTML redirects; after publication verify `/`, `/gm`, `/gm.html`, `/gm/`, an unknown route's 404 status, and the referenced GM assets before calling the migration live. Do not add an SPA fallback or wildcard redirect that hides missing data or pages.
+
+The original Workers Static Assets configuration remains in `wrangler.jsonc`, including its `auto-trailing-slash` and `404-page` settings. `npm run dev:worker` and `npm run deploy:worker` retain that compatibility path; they are not the Pages release commands. The existing CI Worker dry run remains a compatibility check, not proof of a Pages deployment.
 
 For a review build that preserves `dist/`, run `node scripts/build.mjs --output verification/<new-stage-name>`. Package that staged directory with the exported `packageSite({sourceDirectory, outputDirectory})` API.
 

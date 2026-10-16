@@ -8,8 +8,10 @@
     "build": "node scripts/build.mjs",
     "package": "npm run build && node scripts/package-site.mjs",
     "test": "node --test test/*.test.mjs",
-    "dev": "wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "dev": "wrangler pages dev dist --config wrangler.pages.jsonc",
+    "dev:worker": "wrangler dev --config wrangler.jsonc",
+    "deploy": "npm run build && wrangler pages deploy dist --config wrangler.pages.jsonc --project-name tetizz-chess-friend-graph",
+    "deploy:worker": "npm run build && wrangler deploy --config wrangler.jsonc"
   },
   "engines": {
     "node": ">=22"
